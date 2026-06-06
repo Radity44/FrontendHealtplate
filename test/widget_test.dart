@@ -25,8 +25,9 @@ void main() {
 
     // Verify that HomeScreen is displayed instead of WelcomeScreen.
     expect(find.byType(HomeScreen), findsOneWidget);
-    expect(find.text('Halo, Pengguna!'), findsOneWidget);
-    expect(find.text('HealthPlate'), findsOneWidget);
+    expect(find.text('Halo, Ridho'), findsOneWidget);
+    expect(find.text('Target Harian'), findsOneWidget);
+    expect(find.text('2000 kcal'), findsOneWidget);
   });
 
   testWidgets('Profile Picture Setup Screen renders correctly', (WidgetTester tester) async {
@@ -64,5 +65,31 @@ void main() {
     expect(find.text('Lanjutkan'), findsOneWidget);
     expect(find.text('Pria'), findsOneWidget);
     expect(find.text('Wanita'), findsOneWidget);
+  });
+
+  testWidgets('Home Screen navigation to Meal Plan tab works and toggles active state', (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp(isLoggedIn: true));
+
+    // Initially, we are on Dashboard (Home).
+    expect(find.text('Halo, Ridho'), findsOneWidget);
+
+    // Tap on the Meal Plan bottom navigation item.
+    final mealPlanTab = find.text('Meal Plan').last;
+    await tester.tap(mealPlanTab);
+    await tester.pumpAndSettle();
+
+    // Verify empty state is displayed first.
+    expect(find.text('Belum Ada Meal Plan Aktif'), findsOneWidget);
+
+    // Tap "Buat Meal Plan" to transition to active state.
+    final makePlanBtn = find.text('Buat Meal Plan');
+    await tester.ensureVisible(makePlanBtn);
+    await tester.tap(makePlanBtn);
+    await tester.pumpAndSettle();
+
+    // Verify active plan is displayed.
+    expect(find.text('Kaya Protein Ayam A'), findsOneWidget);
+    expect(find.text('Jadwal Hari Ini'), findsOneWidget);
+    expect(find.text('Telur Rebus Oatmeal'), findsOneWidget);
   });
 }

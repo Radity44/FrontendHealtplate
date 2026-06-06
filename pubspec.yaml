@@ -60,6 +60,11 @@ flutter:
 
   assets:
     - assets/images/image_splash_screen.png
+    - assets/images/gambar_null_mealplan.png
+    - assets/images/food_breakfast.png
+    - assets/images/food_lunch.png
+    - assets/images/food_dinner.png
+    - assets/images/food_snack.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
