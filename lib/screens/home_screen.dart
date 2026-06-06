@@ -14,6 +14,29 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDate = DateTime.now();
   final Set<String> _consumedMeals = {'sarapan'};
 
+  late final PageController _calendarPageController;
+  late final DateTime _baseMonday;
+  int _currentCalendarPage = 500;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _baseMonday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
+    _calendarPageController = PageController(initialPage: 500);
+    _currentCalendarPage = 500;
+  }
+
+  @override
+  void dispose() {
+    _calendarPageController.dispose();
+    super.dispose();
+  }
+
   // Sign out method
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
@@ -942,32 +965,39 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-
-  // Overriding month abbr to match layout screenshot
-  String _getIndonesianMonthAbbrCustom(DateTime date) {
-    // Specifically return customized month prefix from user mock: e.g. "MEI 29" -> "MEI", "JUN 1" -> "JUN"
-    if (date.month == 5) return 'MEI';
-    if (date.month == 6) return 'JUN';
-    return _getIndonesianMonthName(date.month).substring(0, 3).toUpperCase();
-  }
-
   String _formatIndonesianDate(DateTime date) {
     final dayName = _getIndonesianDayName(date.weekday);
     final monthName = _getIndonesianMonthName(date.month);
     return '$dayName, ${date.day} $monthName ${date.year}';
   }
 
+  String _getCalendarHeader(int page) {
+    final mondayOfWeek = _baseMonday.add(Duration(days: (page - 500) * 7));
+    final middleOfWeek = mondayOfWeek.add(const Duration(days: 3));
+    final monthName = _getIndonesianMonthName(middleOfWeek.month);
+    return '$monthName, ${middleOfWeek.year}';
+  }
+
+  Widget _buildDayNameHeader(String label) {
+    return SizedBox(
+      width: 36,
+      child: Center(
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF94A3B8), // slate-300
+          ),
+        ),
+      ),
+    );
+  }
+
   // Main Meal Plan Tab Builder
   Widget _buildMealPlanTab() {
     const Color primaryGreen = Color(0xFF095D40);
     const Color textDark = Color(0xFF1E293B);
-    const Color textMuted = Color(0xFF64748B);
-
-    // Generate a range of dates centered around 1 Juni 2026 as per design,
-    // let's show from 29 Mei 2026 to 4 Juni 2026 to make it exact as mockup.
-    final List<DateTime> dates = List.generate(7, (index) {
-      return DateTime(2026, 5, 29).add(Duration(days: index));
-    });
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -1014,73 +1044,156 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // Scrollable horizontal calendar
+            // Weekly Calendar Card (Snaps week-by-week)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0),
-              child: SizedBox(
-                height: 72,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  itemCount: dates.length,
-                  itemBuilder: (context, index) {
-                    final date = dates[index];
-                    final isSelected =
-                        date.day == _selectedDate.day &&
-                        date.month == _selectedDate.month &&
-                        date.year == _selectedDate.year;
-
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _selectedDate = date;
-                        });
-                      },
-                      child: Container(
-                        width: 58,
-                        margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF14B8A6)
-                              : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(16),
-                          border: isSelected
-                              ? Border.all(
-                                  color: const Color(0xFF14B8A6),
-                                  width: 1.5,
-                                )
-                              : Border.all(
-                                  color: const Color(0xFFE2E8F0),
-                                  width: 1,
-                                ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              _getIndonesianMonthAbbrCustom(date),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected
-                                    ? Colors.white.withValues(alpha: 0.8)
-                                    : textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${date.day}',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected ? Colors.white : textDark,
-                              ),
-                            ),
-                          ],
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 8.0,
+              ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    // Top Row: Month and Year (e.g., "Juni, 2026")
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        _getCalendarHeader(_currentCalendarPage),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 12),
+                    // Day Names Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildDayNameHeader('SEN'),
+                        _buildDayNameHeader('SEL'),
+                        _buildDayNameHeader('RAB'),
+                        _buildDayNameHeader('KAM'),
+                        _buildDayNameHeader('JUM'),
+                        _buildDayNameHeader('SAB'),
+                        _buildDayNameHeader('MIN'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // PageView for Snapping Week-by-Week
+                    SizedBox(
+                      height: 40,
+                      child: PageView.builder(
+                        controller: _calendarPageController,
+                        onPageChanged: (page) {
+                          setState(() {
+                            _currentCalendarPage = page;
+                          });
+                        },
+                        itemBuilder: (context, pageIndex) {
+                          final mondayOfWeek = _baseMonday.add(
+                            Duration(days: (pageIndex - 500) * 7),
+                          );
+                          final List<DateTime> weekDates = List.generate(7, (
+                            index,
+                          ) {
+                            return mondayOfWeek.add(Duration(days: index));
+                          });
+
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: weekDates.map((date) {
+                              final now = DateTime.now();
+                              final isToday =
+                                  date.day == now.day &&
+                                  date.month == now.month &&
+                                  date.year == now.year;
+                              final isSelected =
+                                  date.day == _selectedDate.day &&
+                                  date.month == _selectedDate.month &&
+                                  date.year == _selectedDate.year;
+                              final isSunday = date.weekday == DateTime.sunday;
+
+                              BoxDecoration boxDecoration;
+                              Color textColor;
+
+                              if (isSelected) {
+                                boxDecoration = const BoxDecoration(
+                                  color: Color(
+                                    0xFF0284C7,
+                                  ), // Solid blue background
+                                  shape: BoxShape.circle,
+                                );
+                                textColor = Colors.white;
+                              } else if (isToday) {
+                                boxDecoration = BoxDecoration(
+                                  color: Colors.transparent,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF0284C7,
+                                    ), // Blue outline border
+                                    width: 1.5,
+                                  ),
+                                );
+                                textColor = const Color(
+                                  0xFF0284C7,
+                                ); // Blue text for today
+                              } else {
+                                boxDecoration = const BoxDecoration(
+                                  color: Colors.transparent,
+                                  shape: BoxShape.circle,
+                                );
+                                textColor = isSunday
+                                    ? const Color(
+                                        0xFFDC2626,
+                                      ) // Red text for Sunday
+                                    : const Color(
+                                        0xFF1E293B,
+                                      ); // Dark slate for others
+                              }
+
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedDate = date;
+                                  });
+                                },
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: boxDecoration,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    '${date.day}',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
