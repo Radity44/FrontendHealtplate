@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'log_harian_tab.dart';
+import 'riwayat_tab.dart';
+import 'profil_tab.dart';
+import '../models/meal_plan.dart';
+import 'pilih_fokus_nutrisi_screen.dart';
+import 'daftar_resep_screen.dart';
+import 'detail_resep_screen.dart';
+import '../data/recipe_dummy_data.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,9 +22,33 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDate = DateTime.now();
   final Set<String> _consumedMeals = {'sarapan'};
 
+  // Meal Plan Flow state
+  // FUTURE INTEGRATION ARCHITECTURE NOTE:
+  // Currently, the active state is based on `MealPackage? _activePackage` for simple simulation.
+  // In the future, this structure will expand to support date-based meal planning:
+  // e.g. `Map<DateTime, MealPackage> _dateMealPlans` where the app maps a specific Date to a Meal Package.
+  MealPackage? _activePackage;
+  // ignore: unused_field
+  String? _selectedFocus;
+
   late final PageController _calendarPageController;
   late final DateTime _baseMonday;
   int _currentCalendarPage = 500;
+
+  // Profile data and target values loaded from SharedPreferences
+  String _profileName = 'Ridho';
+  int _targetCalories = 2000;
+  int _targetProtein = 90;
+  int _targetCarbs = 250;
+  int _targetFat = 70;
+  int _targetSugar = 30;
+
+  // Simulated daily consumption values for target progress and warning cards
+  final int _consumedCalories = 2200;
+  final int _consumedProtein = 75;
+  final int _consumedCarbs = 180;
+  final int _consumedFat = 55;
+  final int _consumedSugar = 40;
 
   @override
   void initState() {
@@ -29,6 +61,19 @@ class _HomeScreenState extends State<HomeScreen> {
     ).subtract(Duration(days: now.weekday - 1));
     _calendarPageController = PageController(initialPage: 500);
     _currentCalendarPage = 500;
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _profileName = prefs.getString('profile_name') ?? 'Ridho';
+      _targetCalories = prefs.getInt('profile_calories') ?? 2000;
+      _targetProtein = prefs.getInt('profile_protein') ?? 90;
+      _targetCarbs = prefs.getInt('profile_carbohydrate') ?? 250;
+      _targetFat = prefs.getInt('profile_fat') ?? 70;
+      _targetSugar = prefs.getInt('profile_sugar') ?? 30;
+    });
   }
 
   @override
@@ -55,11 +100,11 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1:
         return _buildMealPlanTab();
       case 2:
-        return _buildPlaceholderTab('Log Harian');
+        return const LogHarianTab();
       case 3:
-        return _buildPlaceholderTab('Riwayat');
+        return const RiwayatTab();
       case 4:
-        return _buildProfileTab();
+        return ProfilTab(onLogout: _logout);
       default:
         return _buildDashboard();
     }
@@ -165,18 +210,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Text(
-                            'Halo, Ridho',
-                            style: TextStyle(
+                            'Halo, $_profileName',
+                            style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
                               color: textDark,
                             ),
                           ),
-                          SizedBox(width: 6),
-                          Text('👋', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 6),
+                          const Text('👋', style: TextStyle(fontSize: 20)),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -237,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               width: 100,
                               height: 100,
                               child: CircularProgressIndicator(
-                                value: 0.75,
+                                value: (_consumedCalories / _targetCalories).clamp(0.0, 1.0),
                                 strokeWidth: 10,
                                 valueColor: const AlwaysStoppedAnimation<Color>(
                                   primaryGreen,
@@ -246,20 +291,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 strokeCap: StrokeCap.round,
                               ),
                             ),
-                            const Column(
+                            Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  '75%',
-                                  style: TextStyle(
+                                  '${((_consumedCalories / _targetCalories) * 100).toInt()}%',
+                                  style: const TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.bold,
                                     color: textDark,
                                   ),
                                 ),
                                 Text(
-                                  '1500 kcal',
-                                  style: TextStyle(
+                                  '$_consumedCalories kcal',
+                                  style: const TextStyle(
                                     fontSize: 11,
                                     color: textMuted,
                                     fontWeight: FontWeight.w500,
@@ -284,9 +329,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
-                                '2000 kcal',
-                                style: TextStyle(
+                              Text(
+                                '$_targetCalories kcal',
+                                style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
                                   color: primaryGreen,
@@ -322,7 +367,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    // Macro-nutrients bars
                     Row(
                       children: [
                         Expanded(
@@ -330,15 +374,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               _buildMacroBar(
                                 'Protein',
-                                '60/90g',
-                                0.66,
+                                '$_consumedProtein/${_targetProtein}g',
+                                (_consumedProtein / _targetProtein).clamp(0.0, 1.0),
                                 primaryGreen,
                               ),
                               const SizedBox(height: 16),
                               _buildMacroBar(
                                 'Lemak',
-                                '40/70g',
-                                0.57,
+                                '$_consumedFat/${_targetFat}g',
+                                (_consumedFat / _targetFat).clamp(0.0, 1.0),
                                 const Color(0xFF0284C7),
                               ), // Blue
                             ],
@@ -350,15 +394,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             children: [
                               _buildMacroBar(
                                 'Karbohidrat',
-                                '180/250g',
-                                0.72,
+                                '$_consumedCarbs/${_targetCarbs}g',
+                                (_consumedCarbs / _targetCarbs).clamp(0.0, 1.0),
                                 const Color(0xFFF97316),
                               ), // Orange
                               const SizedBox(height: 16),
                               _buildMacroBar(
                                 'Gula',
-                                '20/30g',
-                                0.66,
+                                '$_consumedSugar/${_targetSugar}g',
+                                (_consumedSugar / _targetSugar).clamp(0.0, 1.0),
                                 const Color(0xFFDC2626),
                               ), // Red
                             ],
@@ -370,6 +414,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // Over-Consumption Warning Cards
+              _buildOverConsumptionWarnings(),
 
               // Akses Cepat Section
               const Text(
@@ -408,7 +455,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: _buildQuickAccessItem(
                       icon: Icons.menu_book,
                       title: 'Resep',
-                      onTap: () => _showInfoSnackbar('Fitur Resep'),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DaftarResepScreen(),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -506,8 +558,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: double.infinity,
                             height: 48,
                             child: ElevatedButton(
-                              onPressed: () =>
-                                  _showInfoSnackbar('Detail Resep Meal Plan'),
+                              onPressed: () {
+                                final recipe = getRecipeForMeal('Nasi Merah Ayam Panggang Sayuran Hijau');
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => DetailResepScreen(recipe: recipe),
+                                  ),
+                                );
+                              },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: primaryGreen,
                                 foregroundColor: Colors.white,
@@ -668,6 +727,92 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Warning Cards for Over-Consumption
+  Widget _buildOverConsumptionWarnings() {
+    final List<Widget> warnings = [];
+
+    if (_consumedCalories > _targetCalories) {
+      warnings.add(
+        _buildWarningCard(
+          'Target kalori harian telah terlampaui sebesar ${_consumedCalories - _targetCalories} kcal.',
+        ),
+      );
+    }
+    if (_consumedSugar > _targetSugar) {
+      warnings.add(
+        _buildWarningCard(
+          'Konsumsi gula hari ini telah melebihi batas harian sebesar ${_consumedSugar - _targetSugar} g.',
+        ),
+      );
+    }
+    if (_consumedFat > _targetFat) {
+      warnings.add(
+        _buildWarningCard(
+          'Konsumsi lemak hari ini telah melebihi batas harian sebesar ${_consumedFat - _targetFat} g.',
+        ),
+      );
+    }
+    if (_consumedProtein > _targetProtein) {
+      warnings.add(
+        _buildWarningCard(
+          'Konsumsi protein hari ini telah melebihi batas harian sebesar ${_consumedProtein - _targetProtein} g.',
+        ),
+      );
+    }
+    if (_consumedCarbs > _targetCarbs) {
+      warnings.add(
+        _buildWarningCard(
+          'Konsumsi karbohidrat hari ini telah melebihi batas harian sebesar ${_consumedCarbs - _targetCarbs} g.',
+        ),
+      );
+    }
+
+    if (warnings.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      children: warnings.map((w) => Padding(
+        padding: const EdgeInsets.only(bottom: 12.0),
+        child: w,
+      )).toList(),
+    );
+  }
+
+  Widget _buildWarningCard(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2), // Light red warning background
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFEE2E2), width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFDC2626), // Premium red warning color
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF991B1B), // Dark red text
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMacroBar(
     String label,
     String value,
@@ -784,121 +929,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Placeholder Tab Content
-  Widget _buildPlaceholderTab(String title) {
-    const Color primaryGreen = Color(0xFF095D40);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: primaryGreen,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        automaticallyImplyLeading: false,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.construction_outlined,
-              size: 64,
-              color: primaryGreen.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Halaman $title sedang dikembangkan',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Profile Tab Content (with Logout button)
-  Widget _buildProfileTab() {
-    const Color primaryGreen = Color(0xFF095D40);
-    const Color textDark = Color(0xFF1E293B);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Profil Pengguna',
-          style: TextStyle(color: primaryGreen, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        automaticallyImplyLeading: false,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            // User Avatar Card
-            const Center(
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Color(0xFFE6F4F1),
-                    child: Icon(
-                      Icons.face_outlined,
-                      size: 60,
-                      color: primaryGreen,
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Ridho',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: textDark,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'ridho@healthplate.com',
-                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 40),
-            // Action item: Logout button
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.redAccent),
-              title: const Text(
-                'Keluar Akun',
-                style: TextStyle(
-                  color: Colors.redAccent,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onTap: _logout,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              tileColor: Colors.white,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Profile tab is now integrated as ProfilTab widget.
 
   void _showInfoSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1275,11 +1306,22 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _hasActiveMealPlan = true;
-              });
-              _showInfoSnackbar('Meal Plan diaktifkan!');
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PilihFokusNutrisiScreen(),
+                ),
+              );
+              if (result != null && result is MealPackage) {
+                setState(() {
+                  _activePackage = result;
+                  _selectedFocus = result.focusId;
+                  _hasActiveMealPlan = true;
+                  _consumedMeals.clear(); // Clear consumed status for new package
+                });
+                _showInfoSnackbar('Meal Plan "${result.name}" diaktifkan!');
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryGreen,
@@ -1360,6 +1402,13 @@ class _HomeScreenState extends State<HomeScreen> {
     const Color textDark = Color(0xFF1E293B);
     const Color textMuted = Color(0xFF64748B);
 
+    final activePackage = _activePackage ?? dummyMealPackages.first;
+    final focusObj = dummyMealFocuses.firstWhere(
+      (f) => f.id == activePackage.focusId,
+      orElse: () => dummyMealFocuses.first,
+    );
+    final categoryName = focusObj.title;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1407,6 +1456,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     onTap: () {
                       setState(() {
                         _hasActiveMealPlan = false;
+                        _activePackage = null;
+                        _selectedFocus = null;
                       });
                       _showInfoSnackbar('Meal Plan dinonaktifkan.');
                     },
@@ -1422,22 +1473,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Kaya Protein Ayam A',
-                style: TextStyle(
+              Text(
+                activePackage.name,
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: textDark,
                 ),
               ),
               const SizedBox(height: 16),
-              const Row(
+              Row(
                 children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'TARGET KALORI',
                           style: TextStyle(
                             fontSize: 10,
@@ -1446,10 +1497,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: 0.5,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          '1800 kcal',
-                          style: TextStyle(
+                          '${activePackage.caloriesKcal} kcal',
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: textDark,
@@ -1462,7 +1513,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'KATEGORI',
                           style: TextStyle(
                             fontSize: 10,
@@ -1471,10 +1522,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: 0.5,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'Kaya Protein',
-                          style: TextStyle(
+                          categoryName,
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: textDark,
@@ -1501,42 +1552,42 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _buildActiveMealCard(
           category: 'SARAPAN',
-          title: 'Telur Rebus Oatmeal',
-          calories: '450 kcal',
+          title: activePackage.breakfastMenu,
+          calories: '${activePackage.breakfastCal} kcal',
           assetPath: 'assets/images/food_breakfast.png',
           mealKey: 'sarapan',
           recipeDetail:
-              'Oatmeal disajikan dengan 2 butir telur rebus setengah matang dan taburan daun bawang serta merica.',
+              'Rincian menu sarapan lezat kaya nutrisi untuk mendukung target kesehatan harian Anda.',
         ),
         const SizedBox(height: 16),
         _buildActiveMealCard(
           category: 'MAKAN SIANG',
-          title: 'Ayam Panggang Nasi Merah',
-          calories: '650 kcal',
+          title: activePackage.lunchMenu,
+          calories: '${activePackage.lunchCal} kcal',
           assetPath: 'assets/images/food_lunch.png',
           mealKey: 'makansiang',
           recipeDetail:
-              '150g dada ayam panggang dengan bumbu rempah, disajikan bersama nasi merah dan tumis brokoli wortel.',
+              'Menu makan siang terkalibrasi untuk mencukupi kebutuhan gizi makro di siang hari.',
         ),
         const SizedBox(height: 16),
         _buildActiveMealCard(
           category: 'MAKAN MALAM',
-          title: 'Ayam Kukus Bayam',
-          calories: '550 kcal',
+          title: activePackage.dinnerMenu,
+          calories: '${activePackage.dinnerCal} kcal',
           assetPath: 'assets/images/food_dinner.png',
           mealKey: 'makanmalam',
           recipeDetail:
-              'Dada ayam kukus lembut disajikan dengan sup bayam segar berkuah bening yang kaya zat besi.',
+              'Makan malam yang ringan dan sehat untuk menjaga metabolisme tubuh tetap ideal.',
         ),
         const SizedBox(height: 16),
         _buildActiveMealCard(
           category: 'SNACK',
-          title: 'Yogurt Rendah Gula',
-          calories: '150 kcal',
+          title: activePackage.snackMenu,
+          calories: '${activePackage.snackCal} kcal',
           assetPath: 'assets/images/food_snack.png',
           mealKey: 'snack',
           recipeDetail:
-              'Satu cup Greek yogurt plain rendah gula ditambahkan daun mint segar dan beberapa buah beri jika ada.',
+              'Camilan sehat terkalibrasi untuk memuaskan rasa lapar di antara waktu makan utama.',
         ),
         const SizedBox(height: 32),
       ],
@@ -1653,7 +1704,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(width: 16),
                       GestureDetector(
                         onTap: () {
-                          _showRecipeDialog(title, recipeDetail);
+                          final recipe = getRecipeForMeal(title);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => DetailResepScreen(recipe: recipe),
+                            ),
+                          );
                         },
                         child: const Text(
                           'Lihat Resep',
@@ -1689,38 +1746,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showRecipeDialog(String title, String detail) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF095D40),
-          ),
-        ),
-        content: Text(
-          detail,
-          style: const TextStyle(fontSize: 14, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Tutup',
-              style: TextStyle(
-                color: Color(0xFF14B8A6),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

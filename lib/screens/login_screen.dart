@@ -10,6 +10,15 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 8),
                 // Email Input
                 TextField(
+                  controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     hintText: 'nama@email.com',
@@ -105,6 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 8),
                 // Password Input
                 TextField(
+                  controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: '· · · · · · · ·',
@@ -175,6 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         // Save login state
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setBool('is_logged_in', true);
+                        await prefs.setString('profile_email', _emailController.text);
                         
                         if (context.mounted) {
                           // Navigate to Home

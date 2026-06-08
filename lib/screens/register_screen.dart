@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -11,6 +12,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeToTerms = false;
+
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,34 +75,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Nama Lengkap Label
-                const Text(
-                  'Nama Lengkap',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Nama Lengkap TextField
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Masukkan nama lengkap',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
-                    prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF94A3B8)),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: borderGray, width: 1.5),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: accentTeal, width: 2.0),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+
 
                 // Email Label
                 const Text(
@@ -103,6 +89,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 8),
                 // Email TextField
                 TextField(
+                  controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     hintText: 'contoh@email.com',
@@ -142,6 +129,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 8),
                 // Password TextField
                 TextField(
+                  controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: 'Masukkan password',
@@ -232,6 +220,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 8),
                 // Konfirmasi Password TextField
                 TextField(
+                  controller: _confirmPasswordController,
                   obscureText: _obscureConfirmPassword,
                   decoration: InputDecoration(
                     hintText: 'Masukkan ulang password',
@@ -320,7 +309,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('temp_email', _emailController.text);
                         // Navigate to Profile Picture Setup (Step 1 of 3)
                         if (context.mounted) {
                           Navigator.pushNamed(context, '/profile-pic-setup');

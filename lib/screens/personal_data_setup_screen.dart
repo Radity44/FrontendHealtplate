@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PersonalDataSetupScreen extends StatefulWidget {
   const PersonalDataSetupScreen({super.key});
@@ -16,6 +17,9 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
 
   // Gender selection state: 0 for none, 1 for Male, 2 for Female
   int _selectedGender = 0;
+  
+  // Date of birth DateTime state
+  DateTime? _selectedBirthDate;
 
   @override
   void dispose() {
@@ -54,7 +58,8 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
 
     if (picked != null) {
       setState(() {
-        // Format date as DD/MM/YYYY
+        _selectedBirthDate = picked;
+        // Format date as DD/MM/YYYY for user display
         final day = picked.day.toString().padLeft(2, '0');
         final month = picked.month.toString().padLeft(2, '0');
         final year = picked.year;
@@ -64,8 +69,26 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
   }
 
   // Method to navigate to Step 3
-  void _navigateToNextStep() {
-    Navigator.pushNamed(context, '/goals-setup');
+  Future<void> _navigateToNextStep() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('temp_name', _nameController.text);
+    await prefs.setString('temp_gender', _selectedGender == 1 ? 'Male' : (_selectedGender == 2 ? 'Female' : ''));
+    
+    if (_selectedBirthDate != null) {
+      final year = _selectedBirthDate!.year;
+      final month = _selectedBirthDate!.month.toString().padLeft(2, '0');
+      final day = _selectedBirthDate!.day.toString().padLeft(2, '0');
+      await prefs.setString('temp_dob', '$year-$month-$day');
+    } else {
+      await prefs.setString('temp_dob', '');
+    }
+    
+    await prefs.setInt('temp_height', int.tryParse(_heightController.text) ?? 0);
+    await prefs.setInt('temp_weight', int.tryParse(_weightController.text) ?? 0);
+
+    if (mounted) {
+      Navigator.pushNamed(context, '/goals-setup');
+    }
   }
 
   @override
@@ -274,7 +297,7 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                     child: TextField(
                       controller: _dobController,
                       decoration: InputDecoration(
-                        hintText: 'mm/dd/yyyy',
+                        hintText: 'dd/mm/yyyy',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
                         prefixIcon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF94A3B8)),
                         contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
