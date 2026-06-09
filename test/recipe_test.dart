@@ -3,8 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontendhealtplate/main.dart';
 import 'package:frontendhealtplate/screens/daftar_resep_screen.dart';
 import 'package:frontendhealtplate/screens/detail_resep_screen.dart';
+import 'package:frontendhealtplate/repositories/profile_repository.dart';
 
 void main() {
+  ProfileRepository.useMockDataForTests = true;
   testWidgets('Recipe listing page renders, performs category selection, and toggles favorite', (WidgetTester tester) async {
     // Build App
     await tester.pumpWidget(const MyApp(isLoggedIn: true));

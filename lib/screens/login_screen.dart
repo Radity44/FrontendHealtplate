@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../repositories/auth_repository.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,6 +10,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
+  bool _isLoading = false;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -18,6 +19,64 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty) {
+      _showSnackBar('Email tidak boleh kosong');
+      return;
+    }
+    if (!email.contains('@')) {
+      _showSnackBar('Format email tidak valid');
+      return;
+    }
+    if (password.isEmpty) {
+      _showSnackBar('Password tidak boleh kosong');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final authRepository = AuthRepository();
+      final response = await authRepository.login(
+        email: email,
+        password: password,
+      );
+
+      if (response.success) {
+        if (mounted) {
+          _showSnackBar(response.message, isError: false);
+          // Navigate to Home and clear stack
+          Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+        }
+      } else {
+        _showSnackBar(response.message);
+      }
+    } catch (e) {
+      _showSnackBar(e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : Colors.teal,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -30,9 +89,11 @@ class _LoginScreenState extends State<LoginScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
         ),
       ),
       body: SafeArea(
@@ -87,6 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  enabled: !_isLoading,
                   decoration: InputDecoration(
                     hintText: 'nama@email.com',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -117,6 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  enabled: !_isLoading,
                   decoration: InputDecoration(
                     hintText: '· · · · · · · ·',
                     hintStyle: const TextStyle(
@@ -152,9 +215,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: GestureDetector(
-                    onTap: () {
-                      // Place holder for forgot password
-                    },
+                    onTap: _isLoading
+                        ? null
+                        : () {
+                            // Place holder for forgot password
+                          },
                     child: const Text(
                       'Lupa Password?',
                       style: TextStyle(
@@ -182,17 +247,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () async {
-                        // Save login state
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setBool('is_logged_in', true);
-                        await prefs.setString('profile_email', _emailController.text);
-                        
-                        if (context.mounted) {
-                          // Navigate to Home
-                          Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
-                        }
-                      },
+                      onPressed: _isLoading ? null : _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF14B8A6), // Teal color
                         foregroundColor: Colors.white,
@@ -202,13 +257,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(28),
                         ),
                       ),
-                      child: const Text(
-                        'Masuk',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text(
+                              'Masuk',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -226,10 +290,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () {
-                          // Navigate to Register page
-                          Navigator.pushNamed(context, '/register');
-                        },
+                        onTap: _isLoading
+                            ? null
+                            : () {
+                                // Navigate to Register page
+                                Navigator.pushNamed(context, '/register');
+                              },
                         child: const Text(
                           'Daftar Sekarang',
                           style: TextStyle(

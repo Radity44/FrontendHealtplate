@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../repositories/profile_repository.dart';
 
 class ProfilePicSetupScreen extends StatefulWidget {
   const ProfilePicSetupScreen({super.key});
@@ -8,8 +10,7 @@ class ProfilePicSetupScreen extends StatefulWidget {
 }
 
 class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
-  // Mock profile picture state - can be updated when they click an option
-  bool _hasCustomImage = false;
+  bool _isLoading = false;
 
   // Method to show the Bottom Sheet
   void _showImagePickerBottomSheet(BuildContext context) {
@@ -61,7 +62,7 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
                   title: 'Ambil Foto',
                   onTap: () {
                     Navigator.pop(context);
-                    _showActionSnackbar(context, 'Membuka Kamera (Simulasi)');
+                    _pickAndUploadImage(ImageSource.camera);
                   },
                 ),
                 // Option: Pilih dari Galeri
@@ -71,20 +72,7 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
                   title: 'Pilih dari Galeri',
                   onTap: () {
                     Navigator.pop(context);
-                    _showActionSnackbar(context, 'Membuka Galeri (Simulasi)');
-                  },
-                ),
-                // Option: Pilih Avatar
-                _buildBottomSheetItem(
-                  context: context,
-                  icon: Icons.face_outlined,
-                  title: 'Pilih Avatar',
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() {
-                      _hasCustomImage = true; // Simulating selecting an avatar
-                    });
-                    _showActionSnackbar(context, 'Avatar Terpilih (Simulasi)');
+                    _pickAndUploadImage(ImageSource.gallery);
                   },
                 ),
                 const Padding(
@@ -154,11 +142,99 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
     );
   }
 
-  void _showActionSnackbar(BuildContext context, String message) {
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    final ImagePicker picker = ImagePicker();
+    try {
+      final XFile? pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1000,
+        maxHeight: 1000,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() {
+        _isLoading = true;
+      });
+
+      final bytes = await pickedFile.readAsBytes();
+      final repository = ProfileRepository();
+
+      await repository.uploadAvatar(bytes, pickedFile.name);
+
+      if (mounted) {
+        _showActionSnackbar(context, 'Foto profil berhasil diunggah!', isError: false);
+        _navigateToNextStep();
+      }
+    } catch (e) {
+      if (mounted) {
+        _showUploadFailedDialog(source);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showUploadFailedDialog(ImageSource source) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.redAccent),
+              SizedBox(width: 8),
+              Text(
+                'Upload Foto Gagal',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Foto profil gagal diunggah.\nAnda dapat mengunggah atau menggantinya nanti melalui halaman Profil.',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 14, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // close dialog
+                _navigateToNextStep(); // Skip/Lewati
+              },
+              child: const Text(
+                'Lewati',
+                style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context); // close dialog
+                _pickAndUploadImage(source); // Retry/Coba Lagi
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF14B8A6),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Coba Lagi'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showActionSnackbar(BuildContext context, String message, {bool isError = true}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: const Color(0xFF095D40),
+        backgroundColor: isError ? Colors.redAccent : const Color(0xFF095D40),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 2),
@@ -185,25 +261,27 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF095D40)),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
         ),
         title: const Text(
           'Langkah 1 dari 3',
           style: TextStyle(
-            color: Color(0xFF095D40), // Green title matching Step 2 style
+            color: Color(0xFF095D40),
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
-        centerTitle: false, // Left-aligned step title
+        centerTitle: false,
       ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start, // Left aligned title & subtitle
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
               // Left-aligned Title
@@ -249,13 +327,10 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
                         ],
                       ),
                       child: ClipOval(
-                        child: _hasCustomImage
-                            ? Container(
-                                color: const Color(0xFFCCFBF1), // Simulated Avatar background
-                                child: const Icon(
-                                  Icons.face_outlined,
-                                  size: 100,
-                                  color: Color(0xFF095D40),
+                        child: _isLoading
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  color: accentTeal,
                                 ),
                               )
                             : Container(
@@ -273,7 +348,7 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
                       bottom: 4,
                       right: 4,
                       child: GestureDetector(
-                        onTap: () => _showImagePickerBottomSheet(context),
+                        onTap: _isLoading ? null : () => _showImagePickerBottomSheet(context),
                         child: Container(
                           width: 48,
                           height: 48,
@@ -305,7 +380,7 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
               // Skip for Now link
               Center(
                 child: GestureDetector(
-                  onTap: _navigateToNextStep,
+                  onTap: _isLoading ? null : _navigateToNextStep,
                   child: const Text(
                     'Lewati untuk Sekarang',
                     style: TextStyle(
@@ -335,7 +410,7 @@ class _ProfilePicSetupScreenState extends State<ProfilePicSetupScreen> {
                     ],
                   ),
                   child: ElevatedButton(
-                    onPressed: _navigateToNextStep,
+                    onPressed: _isLoading ? null : _navigateToNextStep,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accentTeal,
                       foregroundColor: Colors.white,

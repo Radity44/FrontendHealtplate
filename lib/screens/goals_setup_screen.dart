@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../repositories/profile_repository.dart';
+import '../services/session_manager.dart';
 
 class GoalsSetupScreen extends StatefulWidget {
   const GoalsSetupScreen({super.key});
@@ -16,6 +18,8 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
   final TextEditingController _fatController = TextEditingController(text: '70');
   final TextEditingController _sugarController = TextEditingController(text: '30');
 
+  bool _isLoading = false;
+
   @override
   void dispose() {
     _caloriesController.dispose();
@@ -26,38 +30,90 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
     super.dispose();
   }
 
-  // Complete onboarding flow and save target values to SharedPreferences
+  // Complete onboarding flow, save to backend and update SessionManager
   Future<void> _completeOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
+    final caloriesText = _caloriesController.text.trim();
+    final proteinText = _proteinController.text.trim();
+    final carbsText = _carbohydrateController.text.trim();
+    final fatText = _fatController.text.trim();
+    final sugarText = _sugarController.text.trim();
 
-    // 1. Copy temporary profile data from the previous step to official keys
-    final tempName = prefs.getString('temp_name') ?? 'Ridho';
-    final tempEmail = prefs.getString('temp_email') ?? '';
-    final tempGender = prefs.getString('temp_gender') ?? 'Male';
-    final tempDob = prefs.getString('temp_dob') ?? '2006-06-01';
-    final tempHeight = prefs.getInt('temp_height') ?? 170;
-    final tempWeight = prefs.getInt('temp_weight') ?? 65;
-
-    await prefs.setString('profile_name', tempName);
-    await prefs.setString('profile_email', tempEmail);
-    await prefs.setString('profile_gender', tempGender);
-    await prefs.setString('profile_dob', tempDob);
-    await prefs.setInt('profile_height', tempHeight);
-    await prefs.setInt('profile_weight', tempWeight);
-
-    // 2. Save target calories and macros
-    await prefs.setInt('profile_calories', int.tryParse(_caloriesController.text) ?? 2000);
-    await prefs.setInt('profile_protein', int.tryParse(_proteinController.text) ?? 90);
-    await prefs.setInt('profile_carbohydrate', int.tryParse(_carbohydrateController.text) ?? 250);
-    await prefs.setInt('profile_fat', int.tryParse(_fatController.text) ?? 70);
-    await prefs.setInt('profile_sugar', int.tryParse(_sugarController.text) ?? 30);
-
-    // 3. Mark user session as logged in
-    await prefs.setBool('is_logged_in', true);
-
-    if (mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    if (caloriesText.isEmpty || int.tryParse(caloriesText) == null) {
+      _showSnackBar('Target kalori tidak valid');
+      return;
     }
+    if (proteinText.isEmpty || int.tryParse(proteinText) == null) {
+      _showSnackBar('Target protein tidak valid');
+      return;
+    }
+    if (carbsText.isEmpty || int.tryParse(carbsText) == null) {
+      _showSnackBar('Target karbohidrat tidak valid');
+      return;
+    }
+    if (fatText.isEmpty || int.tryParse(fatText) == null) {
+      _showSnackBar('Target lemak tidak valid');
+      return;
+    }
+    if (sugarText.isEmpty || int.tryParse(sugarText) == null) {
+      _showSnackBar('Target gula tidak valid');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final caloriesVal = int.parse(caloriesText);
+      final proteinVal = int.parse(proteinText);
+      final carbsVal = int.parse(carbsText);
+      final fatVal = int.parse(fatText);
+      final sugarVal = int.parse(sugarText);
+
+      final Map<String, dynamic> updatePayload = {
+        'calories_kcal': caloriesVal,
+        'protein_g': proteinVal,
+        'carbohydrate_g': carbsVal,
+        'fat_g': fatVal,
+        'sugar_g': sugarVal,
+      };
+
+      final profileRepository = ProfileRepository();
+      await profileRepository.updateProfile(updatePayload);
+
+      // Save to SharedPreferences for local compatibility/fallbacks
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('profile_calories', caloriesVal);
+      await prefs.setInt('profile_protein', proteinVal);
+      await prefs.setInt('profile_carbohydrate', carbsVal);
+      await prefs.setInt('profile_fat', fatVal);
+      await prefs.setInt('profile_sugar', sugarVal);
+      await prefs.setBool('is_logged_in', true);
+
+      await SessionManager().setOnboardingCompleted(true);
+
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+      }
+    } catch (e) {
+      _showSnackBar(e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -73,9 +129,11 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: primaryGreen),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
         ),
         title: const Text(
           'Langkah 3 dari 3',
@@ -208,7 +266,7 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: _completeOnboarding,
+                      onPressed: _isLoading ? null : _completeOnboarding,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGreen,
                         foregroundColor: Colors.white,
@@ -218,20 +276,29 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
                           borderRadius: BorderRadius.circular(28),
                         ),
                       ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Mulai Menggunakan HealthPlate',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Mulai Menggunakan HealthPlate',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Icon(Icons.arrow_forward, size: 20),
+                              ],
                             ),
-                          ),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, size: 20),
-                        ],
-                      ),
                     ),
                   ),
                 ),
@@ -272,6 +339,7 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
         TextField(
           controller: controller,
           keyboardType: TextInputType.number,
+          enabled: !_isLoading,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -280,6 +348,10 @@ class _GoalsSetupScreenState extends State<GoalsSetupScreen> {
             suffixStyle: const TextStyle(color: textMuted, fontWeight: FontWeight.bold),
             contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: borderGray, width: 1.5),
+            ),
+            disabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: borderGray, width: 1.5),
             ),

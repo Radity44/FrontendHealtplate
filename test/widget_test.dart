@@ -5,8 +5,10 @@ import 'package:frontendhealtplate/screens/welcome_screen.dart';
 import 'package:frontendhealtplate/screens/home_screen.dart';
 import 'package:frontendhealtplate/screens/profile_pic_setup_screen.dart';
 import 'package:frontendhealtplate/screens/personal_data_setup_screen.dart';
+import 'package:frontendhealtplate/repositories/profile_repository.dart';
 
 void main() {
+  ProfileRepository.useMockDataForTests = true;
   testWidgets('Welcome Screen shows when not logged in', (WidgetTester tester) async {
     // Build our app with isLoggedIn: false.
     await tester.pumpWidget(const MyApp(isLoggedIn: false));

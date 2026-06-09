@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../repositories/auth_repository.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,6 +12,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _agreeToTerms = false;
+  bool _isLoading = false;
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -23,6 +24,80 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _register() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (email.isEmpty) {
+      _showSnackBar('Email tidak boleh kosong');
+      return;
+    }
+    if (!email.contains('@')) {
+      _showSnackBar('Format email tidak valid');
+      return;
+    }
+    if (password.isEmpty) {
+      _showSnackBar('Password tidak boleh kosong');
+      return;
+    }
+    if (password.length < 6) {
+      _showSnackBar('Password minimal harus 6 karakter');
+      return;
+    }
+    if (confirmPassword.isEmpty) {
+      _showSnackBar('Konfirmasi password tidak boleh kosong');
+      return;
+    }
+    if (password != confirmPassword) {
+      _showSnackBar('Password dan konfirmasi password tidak cocok');
+      return;
+    }
+    if (!_agreeToTerms) {
+      _showSnackBar('Anda harus menyetujui Syarat & Ketentuan');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final authRepository = AuthRepository();
+      final response = await authRepository.register(
+        email: email,
+        password: password,
+      );
+
+      if (response.success) {
+        if (mounted) {
+          _showSnackBar(response.message, isError: false);
+          Navigator.pushNamed(context, '/profile-pic-setup');
+        }
+      } else {
+        _showSnackBar(response.message);
+      }
+    } catch (e) {
+      _showSnackBar(e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showSnackBar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : Colors.teal,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -41,9 +116,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: textDark), // Plain arrow back as in design
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
         ),
       ),
       body: SafeArea(
@@ -75,8 +152,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 32),
 
-
-
                 // Email Label
                 const Text(
                   'Email',
@@ -91,6 +166,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  enabled: !_isLoading,
                   decoration: InputDecoration(
                     hintText: 'contoh@email.com',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -131,6 +207,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  enabled: !_isLoading,
                   decoration: InputDecoration(
                     hintText: 'Masukkan password',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -222,6 +299,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextField(
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirmPassword,
+                  enabled: !_isLoading,
                   decoration: InputDecoration(
                     hintText: 'Masukkan ulang password',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -263,11 +341,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         side: const BorderSide(color: borderGray, width: 1.5),
-                        onChanged: (value) {
-                          setState(() {
-                            _agreeToTerms = value ?? false;
-                          });
-                        },
+                        onChanged: _isLoading
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _agreeToTerms = value ?? false;
+                                });
+                              },
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -309,14 +389,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('temp_email', _emailController.text);
-                        // Navigate to Profile Picture Setup (Step 1 of 3)
-                        if (context.mounted) {
-                          Navigator.pushNamed(context, '/profile-pic-setup');
-                        }
-                      },
+                      onPressed: _isLoading ? null : _register,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: accentTeal,
                         foregroundColor: Colors.white,
@@ -326,13 +399,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           borderRadius: BorderRadius.circular(28),
                         ),
                       ),
-                      child: const Text(
-                        'Daftar',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text(
+                              'Daftar',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -351,10 +433,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () {
-                          // Navigate to Login page
-                          Navigator.pushReplacementNamed(context, '/login');
-                        },
+                        onTap: _isLoading
+                            ? null
+                            : () {
+                                // Navigate to Login page
+                                Navigator.pushReplacementNamed(context, '/login');
+                              },
                         child: const Text(
                           'Masuk',
                           style: TextStyle(

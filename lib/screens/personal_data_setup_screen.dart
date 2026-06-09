@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../repositories/profile_repository.dart';
 
 class PersonalDataSetupScreen extends StatefulWidget {
   const PersonalDataSetupScreen({super.key});
@@ -17,9 +17,11 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
 
   // Gender selection state: 0 for none, 1 for Male, 2 for Female
   int _selectedGender = 0;
-  
+
   // Date of birth DateTime state
   DateTime? _selectedBirthDate;
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -32,6 +34,8 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
 
   // Date picker launcher
   Future<void> _selectDate(BuildContext context) async {
+    if (_isLoading) return;
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: DateTime(2000),
@@ -68,27 +72,75 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
     }
   }
 
-  // Method to navigate to Step 3
-  Future<void> _navigateToNextStep() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('temp_name', _nameController.text);
-    await prefs.setString('temp_gender', _selectedGender == 1 ? 'Male' : (_selectedGender == 2 ? 'Female' : ''));
-    
-    if (_selectedBirthDate != null) {
-      final year = _selectedBirthDate!.year;
-      final month = _selectedBirthDate!.month.toString().padLeft(2, '0');
-      final day = _selectedBirthDate!.day.toString().padLeft(2, '0');
-      await prefs.setString('temp_dob', '$year-$month-$day');
-    } else {
-      await prefs.setString('temp_dob', '');
-    }
-    
-    await prefs.setInt('temp_height', int.tryParse(_heightController.text) ?? 0);
-    await prefs.setInt('temp_weight', int.tryParse(_weightController.text) ?? 0);
+  // Method to update user profile and navigate to Step 3
+  Future<void> _submitData() async {
+    final name = _nameController.text.trim();
+    final heightText = _heightController.text.trim();
+    final weightText = _weightController.text.trim();
 
-    if (mounted) {
-      Navigator.pushNamed(context, '/goals-setup');
+    if (name.isEmpty) {
+      _showSnackBar('Nama lengkap tidak boleh kosong');
+      return;
     }
+    if (_selectedGender == 0) {
+      _showSnackBar('Silakan pilih jenis kelamin Anda');
+      return;
+    }
+    if (_selectedBirthDate == null) {
+      _showSnackBar('Silakan masukkan tanggal lahir Anda');
+      return;
+    }
+    if (heightText.isEmpty || int.tryParse(heightText) == null) {
+      _showSnackBar('Tinggi badan tidak valid');
+      return;
+    }
+    if (weightText.isEmpty || int.tryParse(weightText) == null) {
+      _showSnackBar('Berat badan tidak valid');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final formattedMonth = _selectedBirthDate!.month.toString().padLeft(2, '0');
+      final formattedDay = _selectedBirthDate!.day.toString().padLeft(2, '0');
+      final isoBirthDate = '${_selectedBirthDate!.year}-$formattedMonth-$formattedDay';
+
+      final Map<String, dynamic> updatePayload = {
+        'name': name,
+        'gender': _selectedGender == 1 ? 'Male' : 'Female',
+        'birth_date': isoBirthDate,
+        'height_cm': int.parse(heightText),
+        'weight_kg': int.parse(weightText),
+      };
+
+      final profileRepository = ProfileRepository();
+      await profileRepository.updateProfile(updatePayload);
+
+      if (mounted) {
+        Navigator.pushNamed(context, '/goals-setup');
+      }
+    } catch (e) {
+      _showSnackBar(e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -107,9 +159,11 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: primaryGreen),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: _isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
         ),
         title: const Text(
           'Langkah 2 dari 3',
@@ -162,11 +216,16 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _nameController,
+                  enabled: !_isLoading,
                   decoration: InputDecoration(
                     hintText: 'Masukkan nama Anda',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
                     contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                     enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: borderGray, width: 1.5),
+                    ),
+                    disabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: const BorderSide(color: borderGray, width: 1.5),
                     ),
@@ -193,11 +252,13 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                     // Card Pria (Male)
                     Expanded(
                       child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedGender = 1;
-                          });
-                        },
+                        onTap: _isLoading
+                            ? null
+                            : () {
+                                setState(() {
+                                  _selectedGender = 1;
+                                });
+                              },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -237,11 +298,13 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                     // Card Wanita (Female)
                     Expanded(
                       child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedGender = 2;
-                          });
-                        },
+                        onTap: _isLoading
+                            ? null
+                            : () {
+                                setState(() {
+                                  _selectedGender = 2;
+                                });
+                              },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -296,12 +359,17 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                   child: AbsorbPointer(
                     child: TextField(
                       controller: _dobController,
+                      enabled: !_isLoading,
                       decoration: InputDecoration(
                         hintText: 'dd/mm/yyyy',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
                         prefixIcon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF94A3B8)),
                         contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                         enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: borderGray, width: 1.5),
+                        ),
+                        disabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: const BorderSide(color: borderGray, width: 1.5),
                         ),
@@ -335,6 +403,7 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                           TextField(
                             controller: _heightController,
                             keyboardType: TextInputType.number,
+                            enabled: !_isLoading,
                             decoration: InputDecoration(
                               hintText: '0',
                               hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -342,6 +411,10 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                               suffixStyle: const TextStyle(color: textMuted, fontWeight: FontWeight.bold),
                               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                               enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: borderGray, width: 1.5),
+                              ),
+                              disabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: const BorderSide(color: borderGray, width: 1.5),
                               ),
@@ -372,6 +445,7 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                           TextField(
                             controller: _weightController,
                             keyboardType: TextInputType.number,
+                            enabled: !_isLoading,
                             decoration: InputDecoration(
                               hintText: '0',
                               hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
@@ -379,6 +453,10 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                               suffixStyle: const TextStyle(color: textMuted, fontWeight: FontWeight.bold),
                               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                               enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: const BorderSide(color: borderGray, width: 1.5),
+                              ),
+                              disabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: const BorderSide(color: borderGray, width: 1.5),
                               ),
@@ -395,7 +473,7 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                 ),
                 const SizedBox(height: 48),
 
-                // Lanjutkan Button (Dark Forest Green as in Screenshot)
+                // Lanjutkan Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -411,7 +489,7 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: _navigateToNextStep,
+                      onPressed: _isLoading ? null : _submitData,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primaryGreen, // Dark Green
                         foregroundColor: Colors.white,
@@ -421,13 +499,22 @@ class _PersonalDataSetupScreenState extends State<PersonalDataSetupScreen> {
                           borderRadius: BorderRadius.circular(28),
                         ),
                       ),
-                      child: const Text(
-                        'Lanjutkan',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text(
+                              'Lanjutkan',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ),

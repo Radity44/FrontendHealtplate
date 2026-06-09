@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
@@ -7,25 +6,37 @@ import 'screens/home_screen.dart';
 import 'screens/profile_pic_setup_screen.dart';
 import 'screens/personal_data_setup_screen.dart';
 import 'screens/goals_setup_screen.dart';
+import 'services/session_manager.dart';
 
 void main() async {
   // Ensure Flutter binding is initialized for SharedPreferences
   WidgetsFlutterBinding.ensureInitialized();
 
-  final prefs = await SharedPreferences.getInstance();
-  // Check if the user is logged in (defaults to false)
-  final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+  final sessionManager = SessionManager();
+  final hasToken = await sessionManager.hasToken();
+  final isOnboardingCompleted = await sessionManager.isOnboardingCompleted();
 
-  runApp(MyApp(isLoggedIn: isLoggedIn));
+  String initialRoute = '/welcome';
+  if (hasToken) {
+    if (isOnboardingCompleted) {
+      initialRoute = '/home';
+    } else {
+      initialRoute = '/profile-pic-setup';
+    }
+  }
+
+  runApp(MyApp(initialRoute: initialRoute));
 }
 
 class MyApp extends StatelessWidget {
-  final bool isLoggedIn;
+  final String? initialRoute;
+  final bool? isLoggedIn;
 
-  const MyApp({super.key, required this.isLoggedIn});
+  const MyApp({super.key, this.initialRoute, this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
+    final effectiveInitialRoute = initialRoute ?? ((isLoggedIn == true) ? '/home' : '/welcome');
     return MaterialApp(
       title: 'HealthPlate',
       debugShowCheckedModeBanner: false,
@@ -36,7 +47,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      initialRoute: isLoggedIn ? '/home' : '/welcome',
+      initialRoute: effectiveInitialRoute,
       routes: {
         '/welcome': (context) => const WelcomeScreen(),
         '/login': (context) => const LoginScreen(),

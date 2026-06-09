@@ -8,6 +8,7 @@ import 'pilih_fokus_nutrisi_screen.dart';
 import 'daftar_resep_screen.dart';
 import 'detail_resep_screen.dart';
 import '../data/recipe_dummy_data.dart';
+import '../repositories/auth_repository.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -84,8 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Sign out method
   Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_logged_in', false);
+    final authRepository = AuthRepository();
+    await authRepository.logout();
 
     if (mounted) {
       Navigator.pushNamedAndRemoveUntil(context, '/welcome', (route) => false);

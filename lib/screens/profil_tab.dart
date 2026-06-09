@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/user_profile.dart';
+import '../repositories/profile_repository.dart';
 import 'edit_profil_screen.dart';
 
 class ProfilTab extends StatefulWidget {
@@ -14,27 +16,60 @@ class ProfilTab extends StatefulWidget {
 }
 
 class _ProfilTabState extends State<ProfilTab> {
-  // Static dummy data for the user profile
-  final String _name = 'Ridho Rizky';
-  final String _email = 'ridho@email.com';
-  final String _gender = 'Pria';
-  final int _age = 28;
-  final int _height = 175;
-  final int _weight = 70;
-  final double _bmi = 22.9;
-  final String _bmiStatus = 'Normal';
-  
-  // Daily target nutrients
-  final int _targetCalories = 2000;
-  final int _targetProtein = 75;
-  final int _targetCarbs = 250;
-  final int _targetFat = 60;
-  final int _targetSugar = 30;
+  bool _isLoading = true;
+  String? _errorMessage;
+  UserProfile? _userProfile;
 
-  // Monthly stats
-  final int _consistentDays = 24;
-  final int _achievementPercentage = 92;
-  final int _avgCalories = 1850;
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfileData();
+  }
+
+  Future<void> _fetchProfileData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final repository = ProfileRepository();
+      final profile = await repository.getProfile();
+      setState(() {
+        _userProfile = profile;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', '');
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'HP';
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length == 1) {
+      return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  int _getAge(String birthDateStr) {
+    if (birthDateStr.isEmpty) return 0;
+    try {
+      final birthDate = DateTime.parse(birthDateStr);
+      final now = DateTime.now();
+      int age = now.year - birthDate.year;
+      if (now.month < birthDate.month || (now.month == birthDate.month && now.day < birthDate.day)) {
+        age--;
+      }
+      return age;
+    } catch (_) {
+      return 0;
+    }
+  }
 
   void _showLogoutConfirmation() {
     showGeneralDialog(
@@ -105,69 +140,132 @@ class _ProfilTabState extends State<ProfilTab> {
     const Color textMuted = Color(0xFF64748B);
     const Color borderGray = Color(0xFFE2E8F0);
 
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF14B8A6),
+          ),
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textDark, fontSize: 15, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _fetchProfileData,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                  child: const Text('Coba Lagi'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final profile = _userProfile!;
+    
+    // Calculate BMI
+    double weight = profile.weightKg.toDouble();
+    double heightM = profile.heightCm.toDouble() / 100.0;
+    double bmi = heightM > 0 ? weight / (heightM * heightM) : 0.0;
+    double formattedBmi = double.parse(bmi.toStringAsFixed(1));
+
+    String bmiStatus = 'Normal';
+    if (bmi < 18.5) {
+      bmiStatus = 'Kurus';
+    } else if (bmi >= 25.0) {
+      bmiStatus = 'Overweight';
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Header (Title, Profile avatar, edit button)
-                _buildHeader(primaryGreen, textDark, textMuted),
-                const SizedBox(height: 24),
+        child: RefreshIndicator(
+          onRefresh: _fetchProfileData,
+          color: const Color(0xFF14B8A6),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Header (Title, Profile avatar, edit button)
+                  _buildHeader(profile, primaryGreen, textDark, textMuted),
+                  const SizedBox(height: 24),
 
-                // 2. Health Summary Card (NEW)
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 100),
-                  child: _buildHealthSummaryCard(textDark, textMuted, borderGray),
-                ),
-                const SizedBox(height: 20),
+                  // 2. Health Summary Card
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 100),
+                    child: _buildHealthSummaryCard(profile, formattedBmi, bmiStatus, textDark, textMuted, borderGray),
+                  ),
+                  const SizedBox(height: 20),
 
-                // 3. Target Nutrisi Harian Card (NEW)
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 200),
-                  child: _buildDailyTargetsCard(primaryGreen, textDark, borderGray),
-                ),
-                const SizedBox(height: 20),
+                  // 3. Target Nutrisi Harian Card
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 200),
+                    child: _buildDailyTargetsCard(profile, primaryGreen, textDark, borderGray),
+                  ),
+                  const SizedBox(height: 20),
 
-                // 4. Data Kesehatan Card
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 300),
-                  child: _buildHealthDataCard(textDark, textMuted, borderGray),
-                ),
-                const SizedBox(height: 20),
+                  // 4. Data Kesehatan Card
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 300),
+                    child: _buildHealthDataCard(profile, textDark, textMuted, borderGray),
+                  ),
+                  const SizedBox(height: 20),
 
-                // 5. Progress Bulan Ini Card (NEW)
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 400),
-                  child: _buildMonthlyProgressCard(primaryGreen, textDark, textMuted, borderGray),
-                ),
-                const SizedBox(height: 24),
+                  // 5. Progress Bulan Ini Card (Statis - Dummy)
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 400),
+                    child: _buildMonthlyProgressCard(profile, primaryGreen, textDark, textMuted, borderGray),
+                  ),
+                  const SizedBox(height: 24),
 
-                // 6. Akun Section
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 500),
-                  child: _buildAccountSection(primaryGreen, textDark, textMuted, borderGray),
-                ),
-                const SizedBox(height: 20),
+                  // 6. Akun Section
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 500),
+                    child: _buildAccountSection(primaryGreen, textDark, textMuted, borderGray),
+                  ),
+                  const SizedBox(height: 20),
 
-                // 7. Dukungan Section
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 600),
-                  child: _buildSupportSection(primaryGreen, textDark, textMuted, borderGray),
-                ),
-                const SizedBox(height: 32),
+                  // 7. Dukungan Section
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 600),
+                    child: _buildSupportSection(primaryGreen, textDark, textMuted, borderGray),
+                  ),
+                  const SizedBox(height: 32),
 
-                // 8. Logout Button
-                FadeInSlideUp(
-                  delay: const Duration(milliseconds: 700),
-                  child: _buildLogoutButton(),
-                ),
-                const SizedBox(height: 32),
-              ],
+                  // 8. Logout Button
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 700),
+                    child: _buildLogoutButton(),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              ),
             ),
           ),
         ),
@@ -175,7 +273,7 @@ class _ProfilTabState extends State<ProfilTab> {
     );
   }
 
-  Widget _buildHeader(Color primaryGreen, Color textDark, Color textMuted) {
+  Widget _buildHeader(UserProfile profile, Color primaryGreen, Color textDark, Color textMuted) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -191,47 +289,41 @@ class _ProfilTabState extends State<ProfilTab> {
         Center(
           child: Column(
             children: [
-              // Avatar with camera/pencil overlay
-              Stack(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+              // Avatar with fallback to name initials
+              Container(
+                width: 108,
+                height: 108,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-                    child: const CircleAvatar(
-                      radius: 50,
-                      backgroundImage: AssetImage('assets/images/avatar_ridho.png'),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 2,
-                    right: 2,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF095D40),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.edit,
-                        size: 14,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
+                child: ClipOval(
+                  child: (profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty)
+                      ? Image.network(
+                          profile.avatarUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildInitialsAvatar(profile.name);
+                          },
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF14B8A6)));
+                          },
+                        )
+                      : _buildInitialsAvatar(profile.name),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
-                _name,
+                profile.name.isNotEmpty ? profile.name : 'HealthPlate User',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -240,7 +332,7 @@ class _ProfilTabState extends State<ProfilTab> {
               ),
               const SizedBox(height: 4),
               Text(
-                _email,
+                profile.email,
                 style: TextStyle(
                   fontSize: 13,
                   color: textMuted,
@@ -252,13 +344,14 @@ class _ProfilTabState extends State<ProfilTab> {
                 width: 140,
                 height: 38,
                 child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.push(
+                  onPressed: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const EditProfilScreen(),
                       ),
                     );
+                    _fetchProfileData();
                   },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: primaryGreen,
@@ -283,9 +376,24 @@ class _ProfilTabState extends State<ProfilTab> {
     );
   }
 
-  Widget _buildHealthSummaryCard(Color textDark, Color textMuted, Color borderGray) {
+  Widget _buildInitialsAvatar(String name) {
+    return Container(
+      color: const Color(0xFFE6F4F1),
+      alignment: Alignment.center,
+      child: Text(
+        _getInitials(name),
+        style: const TextStyle(
+          fontSize: 36,
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF095D40),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHealthSummaryCard(UserProfile profile, double bmi, String bmiStatus, Color textDark, Color textMuted, Color borderGray) {
     Color badgeColor = const Color(0xFF10B981); // Emerald Green for Normal
-    switch (_bmiStatus) {
+    switch (bmiStatus) {
       case 'Kurus':
         badgeColor = const Color(0xFFFBBF24); // Amber
         break;
@@ -318,7 +426,6 @@ class _ProfilTabState extends State<ProfilTab> {
             ),
           ),
           const SizedBox(height: 16),
-          // 2x2 Grid using columns/rows
           Row(
             children: [
               Expanded(
@@ -330,7 +437,7 @@ class _ProfilTabState extends State<ProfilTab> {
                     Row(
                       children: [
                         Text(
-                          '$_bmi',
+                          '$bmi',
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textDark),
                         ),
                         const SizedBox(width: 8),
@@ -341,7 +448,7 @@ class _ProfilTabState extends State<ProfilTab> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            _bmiStatus,
+                            bmiStatus,
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -361,7 +468,7 @@ class _ProfilTabState extends State<ProfilTab> {
                     Text('Berat Saat Ini', style: TextStyle(fontSize: 11, color: textMuted)),
                     const SizedBox(height: 4),
                     Text(
-                      '$_weight kg',
+                      '${profile.weightKg} kg',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textDark),
                     ),
                   ],
@@ -379,7 +486,7 @@ class _ProfilTabState extends State<ProfilTab> {
                     Text('Target Kalori Harian', style: TextStyle(fontSize: 11, color: textMuted)),
                     const SizedBox(height: 4),
                     Text(
-                      '$_targetCalories kcal',
+                      '${profile.caloriesKcal} kcal',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textDark),
                     ),
                   ],
@@ -391,16 +498,16 @@ class _ProfilTabState extends State<ProfilTab> {
           const SizedBox(height: 20),
           Divider(height: 1, color: borderGray),
           const SizedBox(height: 16),
-          _buildBmiIndicator(),
+          _buildBmiIndicator(bmi),
         ],
       ),
     );
   }
 
-  Widget _buildBmiIndicator() {
+  Widget _buildBmiIndicator(double bmi) {
     double minBmi = 15.0;
     double maxBmi = 35.0;
-    double relativePos = (_bmi - minBmi) / (maxBmi - minBmi);
+    double relativePos = (bmi - minBmi) / (maxBmi - minBmi);
     relativePos = relativePos.clamp(0.0, 1.0);
 
     return Column(
@@ -466,7 +573,7 @@ class _ProfilTabState extends State<ProfilTab> {
     );
   }
 
-  Widget _buildDailyTargetsCard(Color primaryGreen, Color textDark, Color borderGray) {
+  Widget _buildDailyTargetsCard(UserProfile profile, Color primaryGreen, Color textDark, Color borderGray) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -487,15 +594,15 @@ class _ProfilTabState extends State<ProfilTab> {
             ),
           ),
           const SizedBox(height: 20),
-          _buildNutrientRow(Icons.local_fire_department_outlined, const Color(0xFFEF4444), 'Kalori', '$_targetCalories kcal'),
+          _buildNutrientRow(Icons.local_fire_department_outlined, const Color(0xFFEF4444), 'Kalori', '${profile.caloriesKcal} kcal'),
           Divider(height: 24, color: borderGray),
-          _buildNutrientRow(Icons.fitness_center_outlined, primaryGreen, 'Protein', '$_targetProtein g'),
+          _buildNutrientRow(Icons.fitness_center_outlined, primaryGreen, 'Protein', '${profile.proteinG} g'),
           Divider(height: 24, color: borderGray),
-          _buildNutrientRow(Icons.bakery_dining_outlined, const Color(0xFFF97316), 'Karbohidrat', '$_targetCarbs g'),
+          _buildNutrientRow(Icons.bakery_dining_outlined, const Color(0xFFF97316), 'Karbohidrat', '${profile.carbohydrateG} g'),
           Divider(height: 24, color: borderGray),
-          _buildNutrientRow(Icons.opacity, const Color(0xFF0284C7), 'Lemak', '$_targetFat g'),
+          _buildNutrientRow(Icons.opacity, const Color(0xFF0284C7), 'Lemak', '${profile.fatG} g'),
           Divider(height: 24, color: borderGray),
-          _buildNutrientRow(Icons.cookie_outlined, const Color(0xFFD97706), 'Gula', '$_targetSugar g'),
+          _buildNutrientRow(Icons.cookie_outlined, const Color(0xFFD97706), 'Gula', '${profile.sugarG} g'),
         ],
       ),
     );
@@ -538,7 +645,10 @@ class _ProfilTabState extends State<ProfilTab> {
     );
   }
 
-  Widget _buildHealthDataCard(Color textDark, Color textMuted, Color borderGray) {
+  Widget _buildHealthDataCard(UserProfile profile, Color textDark, Color textMuted, Color borderGray) {
+    final genderText = profile.gender == 'Male' ? 'Pria' : (profile.gender == 'Female' ? 'Wanita' : '-');
+    final ageText = _getAge(profile.birthDate);
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -559,13 +669,13 @@ class _ProfilTabState extends State<ProfilTab> {
             ),
           ),
           const SizedBox(height: 16),
-          _buildHealthDataRow('Jenis Kelamin', _gender, textDark, textMuted),
+          _buildHealthDataRow('Jenis Kelamin', genderText, textDark, textMuted),
           Divider(height: 20, color: borderGray),
-          _buildHealthDataRow('Usia', '$_age Tahun', textDark, textMuted),
+          _buildHealthDataRow('Usia', '$ageText Tahun', textDark, textMuted),
           Divider(height: 20, color: borderGray),
-          _buildHealthDataRow('Tinggi Badan', '$_height cm', textDark, textMuted),
+          _buildHealthDataRow('Tinggi Badan', '${profile.heightCm} cm', textDark, textMuted),
           Divider(height: 20, color: borderGray),
-          _buildHealthDataRow('Berat Badan', '$_weight kg', textDark, textMuted),
+          _buildHealthDataRow('Berat Badan', '${profile.weightKg} kg', textDark, textMuted),
         ],
       ),
     );
@@ -581,7 +691,8 @@ class _ProfilTabState extends State<ProfilTab> {
     );
   }
 
-  Widget _buildMonthlyProgressCard(Color primaryGreen, Color textDark, Color textMuted, Color borderGray) {
+  Widget _buildMonthlyProgressCard(UserProfile profile, Color primaryGreen, Color textDark, Color textMuted, Color borderGray) {
+    // Static monthly progress details maintained for dashboard completeness
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -609,7 +720,7 @@ class _ProfilTabState extends State<ProfilTab> {
                   Icons.local_fire_department,
                   Colors.orange,
                   'Hari Konsisten',
-                  '$_consistentDays Hari',
+                  '24 Hari',
                   textDark,
                   textMuted,
                 ),
@@ -620,7 +731,7 @@ class _ProfilTabState extends State<ProfilTab> {
                   Icons.ads_click,
                   primaryGreen,
                   'Target Tercapai',
-                  '$_achievementPercentage%',
+                  '92%',
                   textDark,
                   textMuted,
                 ),
@@ -631,7 +742,7 @@ class _ProfilTabState extends State<ProfilTab> {
                   Icons.insights,
                   Colors.blue,
                   'Rata-rata Kalori',
-                  '$_avgCalories kcal',
+                  '1850 kcal',
                   textDark,
                   textMuted,
                 ),
@@ -814,7 +925,7 @@ class _ProfilTabState extends State<ProfilTab> {
   }
 }
 
-// Fade In + Slide Up staggered animator kustom
+// Staggered Fade In + Slide Up Custom Animator
 class FadeInSlideUp extends StatefulWidget {
   final Widget child;
   final Duration delay;
