@@ -15,6 +15,10 @@ class ProfileRepository {
   })  : _profileService = profileService ?? ProfileService(),
         _sessionManager = sessionManager ?? SessionManager();
 
+  Future<UserProfile> getCurrentProfile() async {
+    return getProfile();
+  }
+
   Future<UserProfile> getProfile() async {
     if (useMockDataForTests) {
       return UserProfile(

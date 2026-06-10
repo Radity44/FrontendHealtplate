@@ -1,3 +1,6 @@
+import 'meal_plan_day.dart';
+import 'meal_plan_meal.dart';
+
 class MealFocus {
   final String id;
   final String title;
@@ -267,3 +270,101 @@ const List<MealPackage> dummyMealPackages = [
     snackCal: 100,
   ),
 ];
+
+class MealPlan {
+  final String id;
+  final String name;
+  final String description;
+  final String nutritionFocus;
+  final int durationDays;
+  final bool isActive;
+  final DateTime createdAt;
+  final List<MealPlanDay> days;
+
+  MealPlan({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.nutritionFocus,
+    required this.durationDays,
+    required this.isActive,
+    required this.createdAt,
+    this.days = const [],
+  });
+
+  factory MealPlan.fromJson(Map<String, dynamic> json, {List<dynamic>? items}) {
+    final name = json['plan_name'] as String? ?? 'Meal Plan';
+    final status = json['status'] as String? ?? 'Inactive';
+
+    // Find the matching package from our catalog to fetch explicit metadata
+    String focus = 'Seimbang';
+    String desc = 'Kombinasi protein, karbohidrat, dan sayur.';
+    final matchingPackage = dummyMealPackages.firstWhere(
+      (p) => p.name == name,
+      orElse: () => const MealPackage(
+        id: 'balanced_a',
+        name: 'Menu Seimbang A',
+        focusId: 'balanced',
+        caloriesKcal: 1800,
+        isPopular: false,
+        isRecommended: true,
+        breakfastMenu: '',
+        breakfastCal: 0,
+        lunchMenu: '',
+        lunchCal: 0,
+        dinnerMenu: '',
+        dinnerCal: 0,
+        snackMenu: '',
+        snackCal: 0,
+      ),
+    );
+
+    final matchingFocus = dummyMealFocuses.firstWhere(
+      (f) => f.id == matchingPackage.focusId,
+      orElse: () => dummyMealFocuses.first,
+    );
+
+    focus = matchingFocus.title;
+    desc = matchingFocus.description;
+
+    // Map days from items list if provided
+    List<MealPlanDay> mappedDays = [];
+    if (items != null) {
+      final daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      for (int i = 0; i < 7; i++) {
+        final dayName = daysOfWeek[i];
+        final dayItems = items.where((item) => item['meal_day'] == dayName).toList();
+        
+        final bf = dayItems.where((item) => item['meal_time'] == 'Breakfast').map((item) => MealPlanMeal.fromJson(item)).toList();
+        final ln = dayItems.where((item) => item['meal_time'] == 'Lunch').map((item) => MealPlanMeal.fromJson(item)).toList();
+        final dn = dayItems.where((item) => item['meal_time'] == 'Dinner').map((item) => MealPlanMeal.fromJson(item)).toList();
+        final sn = dayItems.where((item) => item['meal_time'] == 'Snack').map((item) => MealPlanMeal.fromJson(item)).toList();
+        
+        final int totalCal = bf.fold<int>(0, (s, x) => s + x.calories) +
+                             ln.fold<int>(0, (s, x) => s + x.calories) +
+                             dn.fold<int>(0, (s, x) => s + x.calories) +
+                             sn.fold<int>(0, (s, x) => s + x.calories);
+                             
+        mappedDays.add(MealPlanDay(
+          dayNumber: i + 1,
+          breakfast: bf,
+          lunch: ln,
+          dinner: dn,
+          snack: sn,
+          totalCalories: totalCal,
+        ));
+      }
+    }
+
+    return MealPlan(
+      id: json['plan_id'] as String? ?? '',
+      name: name,
+      description: desc,
+      nutritionFocus: focus,
+      durationDays: 7, // Default duration is 7 days
+      isActive: status == 'Active',
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : DateTime.now(),
+      days: mappedDays,
+    );
+  }
+}

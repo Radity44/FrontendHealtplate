@@ -1,16 +1,36 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'config/api_config.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/profile_pic_setup_screen.dart';
 import 'screens/personal_data_setup_screen.dart';
+
 import 'screens/goals_setup_screen.dart';
 import 'services/session_manager.dart';
 
 void main() async {
   // Ensure Flutter binding is initialized for SharedPreferences
   WidgetsFlutterBinding.ensureInitialized();
+
+  await initializeDateFormatting('id', null);
+
+  if (kDebugMode) {
+    String platformName = 'Desktop';
+    if (!kIsWeb && Platform.isAndroid) {
+      if (ApiConfig.baseUrl.contains('10.0.2.2')) {
+        platformName = 'Android Emulator';
+      } else {
+        platformName = 'Android';
+      }
+    }
+    print('Platform : $platformName');
+    print('Base URL : ${ApiConfig.baseUrl}');
+  }
 
   final sessionManager = SessionManager();
   final hasToken = await sessionManager.hasToken();
@@ -36,8 +56,10 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveInitialRoute = initialRoute ?? ((isLoggedIn == true) ? '/home' : '/welcome');
+    final effectiveInitialRoute =
+        initialRoute ?? ((isLoggedIn == true) ? '/home' : '/welcome');
     return MaterialApp(
+      navigatorKey: SessionManager.navigatorKey,
       title: 'HealthPlate',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

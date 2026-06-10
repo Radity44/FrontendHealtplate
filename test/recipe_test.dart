@@ -10,6 +10,7 @@ void main() {
   testWidgets('Recipe listing page renders, performs category selection, and toggles favorite', (WidgetTester tester) async {
     // Build App
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Find "Resep" Quick Access button and tap it
     final resepQuickAccess = find.text('Resep');
@@ -129,6 +130,7 @@ void main() {
 
   testWidgets('Dashboard Lihat Resep navigates directly to Detail Screen', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Find "Lihat Resep" button on the "Meal Plan Berikutnya" card
     final lihatResepBtn = find.text('Lihat Resep').first;

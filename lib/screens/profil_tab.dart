@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
+import '../models/meal_plan.dart';
 import '../repositories/profile_repository.dart';
+import '../repositories/meal_plan_repository.dart';
 import 'edit_profil_screen.dart';
 
 class ProfilTab extends StatefulWidget {
@@ -19,6 +21,7 @@ class _ProfilTabState extends State<ProfilTab> {
   bool _isLoading = true;
   String? _errorMessage;
   UserProfile? _userProfile;
+  MealPlan? _activeMealPlan;
 
   @override
   void initState() {
@@ -35,8 +38,15 @@ class _ProfilTabState extends State<ProfilTab> {
     try {
       final repository = ProfileRepository();
       final profile = await repository.getProfile();
+      MealPlan? activePlan;
+      try {
+        activePlan = await MealPlanRepository().getActiveMealPlan();
+      } catch (e) {
+        debugPrint('Error loading active meal plan: $e');
+      }
       setState(() {
         _userProfile = profile;
+        _activeMealPlan = activePlan;
         _isLoading = false;
       });
     } catch (e) {
@@ -227,6 +237,13 @@ class _ProfilTabState extends State<ProfilTab> {
                   FadeInSlideUp(
                     delay: const Duration(milliseconds: 200),
                     child: _buildDailyTargetsCard(profile, primaryGreen, textDark, borderGray),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Meal Plan Aktif Card
+                  FadeInSlideUp(
+                    delay: const Duration(milliseconds: 250),
+                    child: _buildActiveMealPlanCard(primaryGreen, textDark, textMuted, borderGray),
                   ),
                   const SizedBox(height: 20),
 
@@ -690,9 +707,7 @@ class _ProfilTabState extends State<ProfilTab> {
       ],
     );
   }
-
   Widget _buildMonthlyProgressCard(UserProfile profile, Color primaryGreen, Color textDark, Color textMuted, Color borderGray) {
-    // Static monthly progress details maintained for dashboard completeness
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -713,70 +728,28 @@ class _ProfilTabState extends State<ProfilTab> {
             ),
           ),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildProgressColumn(
-                  Icons.local_fire_department,
-                  Colors.orange,
-                  'Hari Konsisten',
-                  '24 Hari',
-                  textDark,
-                  textMuted,
-                ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                children: [
+                  Icon(Icons.analytics_outlined, color: textMuted.withOpacity(0.5), size: 36),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Data akan tersedia setelah penggunaan rutin.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: textMuted,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
-              Container(width: 1, height: 40, color: borderGray),
-              Expanded(
-                child: _buildProgressColumn(
-                  Icons.ads_click,
-                  primaryGreen,
-                  'Target Tercapai',
-                  '92%',
-                  textDark,
-                  textMuted,
-                ),
-              ),
-              Container(width: 1, height: 40, color: borderGray),
-              Expanded(
-                child: _buildProgressColumn(
-                  Icons.insights,
-                  Colors.blue,
-                  'Rata-rata Kalori',
-                  '1850 kcal',
-                  textDark,
-                  textMuted,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildProgressColumn(
-    IconData icon,
-    Color iconColor,
-    String title,
-    String value,
-    Color textDark,
-    Color textMuted,
-  ) {
-    return Column(
-      children: [
-        Icon(icon, color: iconColor, size: 22),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textDark),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 10, color: textMuted, fontWeight: FontWeight.w500),
-        ),
-      ],
     );
   }
 
@@ -920,6 +893,134 @@ class _ProfilTabState extends State<ProfilTab> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildActiveMealPlanCard(Color primaryGreen, Color textDark, Color textMuted, Color borderGray) {
+    final activePlan = _activeMealPlan;
+    
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: borderGray, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.restaurant, color: Color(0xFF14B8A6), size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Meal Plan Aktif',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: textDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (activePlan != null) ...[
+            Text(
+              activePlan.name,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: primaryGreen,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.track_changes, size: 14, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      Text(
+                        activePlan.nutritionFocus,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2563EB),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBBF7D0), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today, size: 14, color: Color(0xFF16A34A)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${activePlan.durationDays} Hari',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF16A34A),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              activePlan.description,
+              style: TextStyle(
+                fontSize: 13,
+                color: textMuted,
+                height: 1.4,
+              ),
+            ),
+          ] else ...[
+            Text(
+              'Belum Ada Meal Plan Aktif',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: textMuted,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Silakan pilih paket meal plan di tab Meal Plan untuk menyinkronkan target menu harian Anda.',
+              style: TextStyle(
+                fontSize: 12,
+                color: textMuted,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

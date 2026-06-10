@@ -1,22 +1,35 @@
 import 'package:flutter/material.dart';
+import '../models/daily_log.dart';
+import '../models/log_entry.dart';
+import '../models/meal_plan.dart';
+import '../models/meal_plan_day.dart';
+import '../models/meal_plan_meal.dart';
+import '../repositories/log_repository.dart';
+import '../repositories/meal_plan_repository.dart';
 import 'tambah_konsumsi_manual_screen.dart';
-import 'scan_barcode_screen.dart';
 
 class LogHarianTab extends StatefulWidget {
-  const LogHarianTab({super.key});
+  final VoidCallback? onRefreshDashboard;
+
+  const LogHarianTab({super.key, this.onRefreshDashboard});
 
   @override
   State<LogHarianTab> createState() => _LogHarianTabState();
 }
 
 class _LogHarianTabState extends State<LogHarianTab> {
-  // Switch to toggle between empty state and filled state
-  bool _isTestingEmptyState = false;
-
   DateTime _selectedDate = DateTime.now();
   late final PageController _calendarPageController;
   late final DateTime _baseMonday;
   int _currentCalendarPage = 500;
+
+  // Repository
+  final LogRepository _logRepository = LogRepository();
+
+  DailyLog? _dailyLog;
+  MealPlan? _activeMealPlan;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -29,12 +42,306 @@ class _LogHarianTabState extends State<LogHarianTab> {
     ).subtract(Duration(days: now.weekday - 1));
     _calendarPageController = PageController(initialPage: 500);
     _currentCalendarPage = 500;
+    _fetchDailyLog();
   }
 
   @override
   void dispose() {
     _calendarPageController.dispose();
     super.dispose();
+  }
+
+  String _formatDateString(DateTime date) {
+    final year = date.year;
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  Future<void> _fetchDailyLog() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final dateStr = _formatDateString(_selectedDate);
+      final log = await _logRepository.fetchDailyLog(dateStr);
+      final activePlan = await MealPlanRepository().getActiveMealPlan();
+      if (mounted) {
+        setState(() {
+          _dailyLog = log;
+          _activeMealPlan = activePlan;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _logRecommendation(String mealTime, List<MealPlanMeal> meals) async {
+    const Color primaryGreen = Color(0xFF095D40);
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            content: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    'Mencatat Konsumsi...',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Menambahkan hidangan rekomendasi ke log harian Anda.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      final dateStr = _formatDateString(_selectedDate);
+      for (var meal in meals) {
+        await _logRepository.addFoodEntry(
+          date: dateStr,
+          productId: meal.id,
+          mealTime: mealTime,
+          portion: meal.portion,
+        );
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // pop loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Rekomendasi menu berhasil dicatat!'),
+            backgroundColor: primaryGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _fetchDailyLog();
+        widget.onRefreshDashboard?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // pop loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mencatat rekomendasi: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteEntry(LogEntry entry) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final dateStr = _formatDateString(_selectedDate);
+      await _logRepository.deleteFoodEntry(date: dateStr, entryId: entry.entryId);
+      _fetchDailyLog();
+      widget.onRefreshDashboard?.call();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Konsumsi berhasil dihapus.'),
+            backgroundColor: Color(0xFF095D40),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Gagal menghapus makanan: $e';
+      });
+    }
+  }
+
+  void _showEditPortionDialog(LogEntry entry) {
+    final TextEditingController portionController =
+        TextEditingController(text: entry.portion.toInt().toString());
+    const Color primaryGreen = Color(0xFF095D40);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Ubah Porsi Makanan', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(entry.foodProduct.productName, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: portionController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Porsi (Gram)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final newPortion = double.tryParse(portionController.text) ?? 0.0;
+                if (newPortion <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Porsi harus lebih dari 0.')),
+                  );
+                  return;
+                }
+                Navigator.pop(context);
+                _executeEditFlow(entry, newPortion);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+              child: const Text('Simpan', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Delete + Recreate sequential flow with loading dialog overlay
+  Future<void> _executeEditFlow(LogEntry entry, double newPortion) async {
+    const Color primaryGreen = Color(0xFF095D40);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(primaryGreen)),
+                const SizedBox(height: 16),
+                const Text('Memproses perubahan...', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final dateStr = _formatDateString(_selectedDate);
+      // 1. Delete
+      await _logRepository.deleteFoodEntry(date: dateStr, entryId: entry.entryId);
+      // 2. Re-create
+      await _logRepository.addFoodEntry(
+        date: dateStr,
+        productId: entry.foodProduct.productId,
+        mealTime: entry.mealTime,
+        portion: newPortion,
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading overlay
+        _fetchDailyLog();
+        widget.onRefreshDashboard?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Konsumsi berhasil diubah.'),
+            backgroundColor: primaryGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading overlay
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengubah konsumsi: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showEntryActions(LogEntry entry) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Ubah Porsi'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditPortionDialog(entry);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('Hapus Konsumsi', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteEntry(entry);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // Indonesian Date Formatter
@@ -102,7 +409,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Drag handle indicator
                   Center(
                     child: Container(
                       width: 40,
@@ -163,57 +469,21 @@ class _LogHarianTabState extends State<LogHarianTab> {
                       'Masukkan data makanan atau minuman secara manual.',
                       style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
                     ),
-                    onTap: () {
+                    onTap: () async {
                       Navigator.pop(context); // close bottom sheet
-                      Navigator.push(
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => TambahKonsumsiManualScreen(initialMealTime: mealTime),
+                          builder: (context) => TambahKonsumsiManualScreen(
+                            initialMealTime: mealTime,
+                            selectedDate: _selectedDate,
+                          ),
                         ),
                       );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Option 2: Scan Barcode
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.2),
-                    ),
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF0FDFB),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.qr_code_scanner_outlined,
-                        color: primaryGreen,
-                        size: 24,
-                      ),
-                    ),
-                    title: const Text(
-                      'Scan Barcode',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: textDark,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      'Isi data nutrisi secara otomatis melalui barcode produk.',
-                      style: TextStyle(fontSize: 12, color: textMuted, height: 1.3),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context); // close bottom sheet
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ScanBarcodeScreen(),
-                        ),
-                      );
+                      if (result == true) {
+                        _fetchDailyLog();
+                        widget.onRefreshDashboard?.call();
+                      }
                     },
                   ),
                   const SizedBox(height: 24),
@@ -261,7 +531,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Header (Log Harian, Date, Bell Notification, Switch Simulator)
+            // 1. Header (Log Harian, Date, Bell Notification)
             Padding(
               padding: const EdgeInsets.only(
                 left: 20.0,
@@ -305,31 +575,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
                   ),
                   Row(
                     children: [
-                      // Simulation Toggle Switch
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Data Terisi',
-                            style: TextStyle(fontSize: 9, color: textMuted, fontWeight: FontWeight.bold),
-                          ),
-                          SizedBox(
-                            height: 28,
-                            child: Switch(
-                              value: !_isTestingEmptyState,
-                              onChanged: (val) {
-                                setState(() {
-                                  _isTestingEmptyState = !val;
-                                });
-                              },
-                              activeThumbColor: primaryGreen,
-                              activeTrackColor: const Color(0xFFCCFBF1),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      // Notification Bell Card
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -371,7 +616,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
+                      color: Colors.black.withOpacity(0.02),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -380,7 +625,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
                 ),
                 child: Column(
                   children: [
-                    // Top Row: Month and Year (e.g., "Juni, 2026")
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text(
@@ -393,7 +637,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Day Names Header
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
@@ -407,7 +650,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    // PageView for Snapping Week-by-Week
                     SizedBox(
                       height: 40,
                       child: PageView.builder(
@@ -446,7 +688,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
 
                               if (isSelected) {
                                 boxDecoration = const BoxDecoration(
-                                  color: Color(0xFF0284C7), // Solid blue background
+                                  color: Color(0xFF0284C7),
                                   shape: BoxShape.circle,
                                 );
                                 textColor = Colors.white;
@@ -455,19 +697,19 @@ class _LogHarianTabState extends State<LogHarianTab> {
                                   color: Colors.transparent,
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: const Color(0xFF0284C7), // Blue outline border
+                                    color: const Color(0xFF0284C7),
                                     width: 1.5,
                                   ),
                                 );
-                                textColor = const Color(0xFF0284C7); // Blue text
+                                textColor = const Color(0xFF0284C7);
                               } else {
                                 boxDecoration = const BoxDecoration(
                                   color: Colors.transparent,
                                   shape: BoxShape.circle,
                                 );
                                 textColor = isSunday
-                                    ? const Color(0xFFDC2626) // Red text
-                                    : const Color(0xFF1E293B); // Dark slate
+                                    ? const Color(0xFFDC2626)
+                                    : const Color(0xFF1E293B);
                               }
 
                               return GestureDetector(
@@ -475,6 +717,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                                   setState(() {
                                     _selectedDate = date;
                                   });
+                                  _fetchDailyLog();
                                 },
                                 child: Container(
                                   width: 36,
@@ -503,102 +746,92 @@ class _LogHarianTabState extends State<LogHarianTab> {
 
             const SizedBox(height: 10),
 
-            // 3. Main content (Sections List)
+            // 3. Main content
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                  child: Column(
-                    children: [
-                      // Section 1: Sarapan
-                      _buildMealSection(
-                        title: 'Sarapan',
-                        timeRange: '07:00 - 09:00',
-                        icon: Icons.wb_sunny_outlined,
-                        iconColor: const Color(0xFFF59E0B), // Warm yellow/orange
-                        iconBgColor: const Color(0xFFFEF3C7),
-                        mealItems: _isTestingEmptyState
-                            ? []
-                            : [
-                                _MealItemData(
-                                  name: 'Nasi Goreng Spesial',
-                                  detail: '200 gram • 450 kcal',
-                                  icon: Icons.flatware,
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+                      ),
+                    )
+                  : _errorMessage != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Gagal memuat log harian.\n$_errorMessage',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: textDark, fontWeight: FontWeight.w600),
                                 ),
-                                _MealItemData(
-                                  name: 'Teh Manis',
-                                  detail: '250 ml • 120 kcal',
-                                  icon: Icons.local_drink_outlined,
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: _fetchDailyLog,
+                                  style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+                                  child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
                                 ),
                               ],
-                        totalCalories: _isTestingEmptyState ? 0 : 570,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Section 2: Makan Siang
-                      _buildMealSection(
-                        title: 'Makan Siang',
-                        timeRange: '12:00 - 14:00',
-                        icon: Icons.restaurant_menu_outlined,
-                        iconColor: const Color(0xFF10B981), // Solid green
-                        iconBgColor: const Color(0xFFD1FAE5),
-                        mealItems: _isTestingEmptyState
-                            ? []
-                            : [
-                                _MealItemData(
-                                  name: 'Ayam Panggang Nasi Merah',
-                                  detail: '450 gram • 650 kcal',
-                                  icon: Icons.flatware,
-                                ),
-                              ],
-                        totalCalories: _isTestingEmptyState ? 0 : 650,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Section 3: Makan Malam
-                      _buildMealSection(
-                        title: 'Makan Malam',
-                        timeRange: '18:00 - 20:00',
-                        icon: Icons.nightlight_round_outlined,
-                        iconColor: const Color(0xFF6366F1), // Soft blue/indigo
-                        iconBgColor: const Color(0xFFE0E7FF),
-                        mealItems: _isTestingEmptyState
-                            ? []
-                            : [
-                                _MealItemData(
-                                  name: 'Ayam Kukus Bayam',
-                                  detail: '350 gram • 550 kcal',
-                                  icon: Icons.flatware,
-                                ),
-                              ],
-                        totalCalories: _isTestingEmptyState ? 0 : 550,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Section 4: Snack
-                      _buildMealSection(
-                        title: 'Snack',
-                        timeRange: 'Kapan Saja',
-                        icon: Icons.cookie_outlined,
-                        iconColor: const Color(0xFFD97706), // Brownish amber
-                        iconBgColor: const Color(0xFFFEF3C7),
-                        mealItems: _isTestingEmptyState
-                            ? []
-                            : [
-                                _MealItemData(
-                                  name: 'Yogurt Rendah Gula',
-                                  detail: '1 porsi • 150 kcal',
-                                  icon: Icons.coffee_outlined,
-                                ),
-                              ],
-                        totalCalories: _isTestingEmptyState ? 0 : 150,
-                      ),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
-              ),
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _fetchDailyLog,
+                          color: primaryGreen,
+                          child: SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                              child: Column(
+                                children: [
+                                  _buildMealSection(
+                                    title: 'Sarapan',
+                                    timeRange: '07:00 - 09:00',
+                                    icon: Icons.wb_sunny_outlined,
+                                    iconColor: const Color(0xFFF59E0B),
+                                    iconBgColor: const Color(0xFFFEF3C7),
+                                    mealItems: _filterEntriesByMealTime('Breakfast'),
+                                    totalCalories: _sumCaloriesByMealTime('Breakfast'),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildMealSection(
+                                    title: 'Makan Siang',
+                                    timeRange: '12:00 - 14:00',
+                                    icon: Icons.restaurant_menu_outlined,
+                                    iconColor: const Color(0xFF10B981),
+                                    iconBgColor: const Color(0xFFD1FAE5),
+                                    mealItems: _filterEntriesByMealTime('Lunch'),
+                                    totalCalories: _sumCaloriesByMealTime('Lunch'),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildMealSection(
+                                    title: 'Makan Malam',
+                                    timeRange: '18:00 - 20:00',
+                                    icon: Icons.nightlight_round_outlined,
+                                    iconColor: const Color(0xFF6366F1),
+                                    iconBgColor: const Color(0xFFE0E7FF),
+                                    mealItems: _filterEntriesByMealTime('Dinner'),
+                                    totalCalories: _sumCaloriesByMealTime('Dinner'),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildMealSection(
+                                    title: 'Snack',
+                                    timeRange: 'Kapan Saja',
+                                    icon: Icons.cookie_outlined,
+                                    iconColor: const Color(0xFFD97706),
+                                    iconBgColor: const Color(0xFFFEF3C7),
+                                    mealItems: _filterEntriesByMealTime('Snack'),
+                                    totalCalories: _sumCaloriesByMealTime('Snack'),
+                                  ),
+                                  const SizedBox(height: 24),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
             ),
           ],
         ),
@@ -606,20 +839,101 @@ class _LogHarianTabState extends State<LogHarianTab> {
     );
   }
 
-  // Build Meal Section Card
+  List<LogEntry> _filterEntriesByMealTime(String mealTime) {
+    if (_dailyLog == null) return [];
+    return _dailyLog!.logEntries.where((entry) => entry.mealTime.toLowerCase() == mealTime.toLowerCase()).toList();
+  }
+
+  int _sumCaloriesByMealTime(String mealTime) {
+    final entries = _filterEntriesByMealTime(mealTime);
+    double sum = 0;
+    for (var entry in entries) {
+      // potion is gram, caloriesKcal is per 100g.
+      sum += (entry.foodProduct.caloriesKcal * (entry.portion / 100.0));
+    }
+    return sum.toInt();
+  }
+
   Widget _buildMealSection({
     required String title,
     required String timeRange,
     required IconData icon,
     required Color iconColor,
     required Color iconBgColor,
-    required List<_MealItemData> mealItems,
+    required List<LogEntry> mealItems,
     required int totalCalories,
   }) {
     const Color primaryGreen = Color(0xFF095D40);
     const Color textDark = Color(0xFF1E293B);
     const Color textMuted = Color(0xFF64748B);
     const Color borderGray = Color(0xFFE2E8F0);
+
+    final String mealType;
+    if (title == 'Sarapan') {
+      mealType = 'Breakfast';
+    } else if (title == 'Makan Siang') {
+      mealType = 'Lunch';
+    } else if (title == 'Makan Malam') {
+      mealType = 'Dinner';
+    } else {
+      mealType = 'Snack';
+    }
+
+    String? recMenuName;
+    int? recCalories;
+    List<MealPlanMeal>? recMeals;
+
+    if (_activeMealPlan != null) {
+      final activePlan = _activeMealPlan!;
+      final activePackage = dummyMealPackages.firstWhere(
+        (p) => p.name == activePlan.name,
+        orElse: () => dummyMealPackages.first,
+      );
+
+      final dayNum = _selectedDate.weekday;
+      final dayData = activePlan.days.firstWhere(
+        (d) => d.dayNumber == dayNum,
+        orElse: () => MealPlanDay(
+          dayNumber: dayNum,
+          breakfast: [],
+          lunch: [],
+          dinner: [],
+          snack: [],
+          totalCalories: 0,
+        ),
+      );
+
+      List<MealPlanMeal> mealsForTime = [];
+      String fallbackMenu = '';
+      int fallbackCal = 0;
+
+      if (mealType == 'Breakfast') {
+        mealsForTime = dayData.breakfast;
+        fallbackMenu = activePackage.breakfastMenu;
+        fallbackCal = activePackage.breakfastCal;
+      } else if (mealType == 'Lunch') {
+        mealsForTime = dayData.lunch;
+        fallbackMenu = activePackage.lunchMenu;
+        fallbackCal = activePackage.lunchCal;
+      } else if (mealType == 'Dinner') {
+        mealsForTime = dayData.dinner;
+        fallbackMenu = activePackage.dinnerMenu;
+        fallbackCal = activePackage.dinnerCal;
+      } else {
+        mealsForTime = dayData.snack;
+        fallbackMenu = activePackage.snackMenu;
+        fallbackCal = activePackage.snackCal;
+      }
+
+      if (mealsForTime.isNotEmpty) {
+        recMenuName = mealsForTime.map((m) => m.name).join(' + ');
+        recCalories = mealsForTime.fold<int>(0, (s, m) => s + m.calories);
+        recMeals = mealsForTime;
+      } else if (fallbackMenu.isNotEmpty) {
+        recMenuName = fallbackMenu;
+        recCalories = fallbackCal;
+      }
+    }
 
     return Container(
       width: double.infinity,
@@ -629,7 +943,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
         border: Border.all(color: borderGray, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -639,7 +953,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section header line: Icon, Name, Time
           Row(
             children: [
               Container(
@@ -672,7 +985,84 @@ class _LogHarianTabState extends State<LogHarianTab> {
           ),
           const SizedBox(height: 16),
 
-          // If no items: Empty state card inside the section
+          if (recMenuName != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.tips_and_updates_outlined, size: 16, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Rekomendasi Menu $title:',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2563EB),
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          recMenuName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1E3A8A),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$recCalories kcal',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3B82F6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (recMeals != null && recMeals.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () => _logRecommendation(mealType, recMeals!),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Makan Ini',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           if (mealItems.isEmpty)
             Container(
               width: double.infinity,
@@ -680,29 +1070,37 @@ class _LogHarianTabState extends State<LogHarianTab> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderGray.withValues(alpha: 0.5), width: 1.2),
+                border: Border.all(color: borderGray.withOpacity(0.5), width: 1.2),
               ),
               child: Column(
                 children: [
                   const Text(
-                    'Belum ada konsumsi tercatat',
+                    'Belum ada konsumsi tercatat hari ini.',
                     style: TextStyle(
                       fontSize: 13,
                       color: textMuted,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Tambahkan makanan pertama Anda untuk mulai memantau nutrisi harian.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: textMuted,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () => _showTambahKonsumsiSheet(title),
-                    icon: const Icon(Icons.add, size: 16),
+                    icon: const Icon(Icons.add, size: 16, color: Colors.white),
                     label: const Text(
                       'Tambah Konsumsi',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryGreen,
-                      foregroundColor: Colors.white,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                       shape: RoundedRectangleBorder(
@@ -714,9 +1112,10 @@ class _LogHarianTabState extends State<LogHarianTab> {
               ),
             )
           else ...[
-            // List of filled items
             Column(
               children: mealItems.map((item) {
+                // calculate portion calories
+                final calories = (item.foodProduct.caloriesKcal * (item.portion / 100.0)).toInt();
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
                   child: Container(
@@ -735,7 +1134,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: borderGray, width: 1),
                           ),
-                          child: Icon(item.icon, color: textMuted, size: 18),
+                          child: const Icon(Icons.flatware, color: textMuted, size: 18),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -743,7 +1142,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item.name,
+                                item.foodProduct.productName,
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
@@ -752,7 +1151,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                item.detail,
+                                '${item.portion.toInt()} gram • $calories kcal',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: textMuted,
@@ -763,14 +1162,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.more_vert, color: textMuted),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Menu aksi untuk ${item.name} (simulasi)'),
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
-                          },
+                          onPressed: () => _showEntryActions(item),
                         ),
                       ],
                     ),
@@ -779,7 +1171,6 @@ class _LogHarianTabState extends State<LogHarianTab> {
               }).toList(),
             ),
             
-            // Bottom stats and action line
             const SizedBox(height: 6),
             const Divider(color: borderGray, height: 1),
             const SizedBox(height: 12),
@@ -842,16 +1233,4 @@ class _LogHarianTabState extends State<LogHarianTab> {
       ),
     );
   }
-}
-
-class _MealItemData {
-  final String name;
-  final String detail;
-  final IconData icon;
-
-  _MealItemData({
-    required this.name,
-    required this.detail,
-    required this.icon,
-  });
 }

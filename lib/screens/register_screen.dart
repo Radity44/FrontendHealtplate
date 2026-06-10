@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../repositories/auth_repository.dart';
+import '../utils/app_snackbar.dart';
+import '../utils/auth_exception.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,9 +16,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _agreeToTerms = false;
   bool _isLoading = false;
 
+  /// Inline auth/validation error — displayed below the confirm-password field.
+  /// Cleared automatically when the user edits any input field.
+  String? _authError;
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.addListener(_clearAuthError);
+    _passwordController.addListener(_clearAuthError);
+    _confirmPasswordController.addListener(_clearAuthError);
+  }
+
+  void _clearAuthError() {
+    if (_authError != null) setState(() => _authError = null);
+  }
 
   @override
   void dispose() {
@@ -31,37 +49,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
+    // ── Form validation (inline error) ────────────────────────────────────────
     if (email.isEmpty) {
-      _showSnackBar('Email tidak boleh kosong');
+      setState(() => _authError = 'Email tidak boleh kosong.');
       return;
     }
     if (!email.contains('@')) {
-      _showSnackBar('Format email tidak valid');
+      setState(() => _authError = 'Format email tidak valid.');
       return;
     }
     if (password.isEmpty) {
-      _showSnackBar('Password tidak boleh kosong');
+      setState(() => _authError = 'Kata sandi tidak boleh kosong.');
       return;
     }
     if (password.length < 6) {
-      _showSnackBar('Password minimal harus 6 karakter');
+      setState(() => _authError = 'Kata sandi minimal harus 6 karakter.');
       return;
     }
     if (confirmPassword.isEmpty) {
-      _showSnackBar('Konfirmasi password tidak boleh kosong');
+      setState(() => _authError = 'Konfirmasi kata sandi tidak boleh kosong.');
       return;
     }
     if (password != confirmPassword) {
-      _showSnackBar('Password dan konfirmasi password tidak cocok');
+      setState(() => _authError = 'Kata sandi dan konfirmasinya tidak cocok.');
       return;
     }
     if (!_agreeToTerms) {
-      _showSnackBar('Anda harus menyetujui Syarat & Ketentuan');
+      setState(() => _authError = 'Anda harus menyetujui Syarat & Ketentuan.');
       return;
     }
 
     setState(() {
       _isLoading = true;
+      _authError = null;
     });
 
     try {
@@ -73,31 +93,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (response.success) {
         if (mounted) {
-          _showSnackBar(response.message, isError: false);
+          AppSnackbar.showSuccess(context, response.message);
           Navigator.pushNamed(context, '/profile-pic-setup');
         }
       } else {
-        _showSnackBar(response.message);
+        if (mounted) setState(() => _authError = response.message);
       }
+    } on AuthException catch (e) {
+      // API-level error (email sudah digunakan, dsb.) → inline.
+      if (mounted) setState(() => _authError = e.message);
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''));
-    } finally {
+      // Network/timeout/server error → snackbar.
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        final msg = e.toString()
+            .replaceAll('HttpException: ', '')
+            .replaceAll('Exception: ', '');
+        AppSnackbar.showError(context, msg);
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _showSnackBar(String message, {bool isError = true}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.redAccent : Colors.teal,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
@@ -326,7 +341,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 32),
 
                 // Terms and Conditions Checkbox Row
                 Row(
@@ -346,6 +361,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             : (value) {
                                 setState(() {
                                   _agreeToTerms = value ?? false;
+                                  _authError = null; // clear on interaction
                                 });
                               },
                       ),
@@ -371,7 +387,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 32),
+
+                // ── Inline auth/validation error ──────────────────────────────
+                if (_authError != null) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Color(0xFFEF4444),
+                        size: 15,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _authError!,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFEF4444),
+                            height: 1.4,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 24),
 
                 // Daftar Button
                 SizedBox(

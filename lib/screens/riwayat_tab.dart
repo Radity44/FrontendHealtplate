@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'detail_riwayat_screen.dart';
+import '../repositories/dashboard_repository.dart';
+import '../repositories/profile_repository.dart';
+import '../models/user_profile.dart';
 
 class RiwayatTab extends StatefulWidget {
   const RiwayatTab({super.key});
@@ -16,231 +20,198 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
   int _selectedChartNutrient = 0;
 
   // Datasets for 7 Days, 30 Days, and Bulanan
-  late final _HistoryDataBundle _data7Days;
-  late final _HistoryDataBundle _data30Days;
-  late final _HistoryDataBundle _dataMonthly;
+  late _HistoryDataBundle _data7Days;
+  late _HistoryDataBundle _data30Days;
+  late _HistoryDataBundle _dataMonthly;
+
+  bool _isLoading = true;
+  String? _errorMessage;
+  String? _profileErrorMessage;
+  UserProfile? _userProfile;
+  List<Map<String, dynamic>>? _raw90Data;
+  DateTime _selectedMonth = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _initDummyData();
+    _fetchHistoryData();
   }
 
-  void _initDummyData() {
-    // 7 Days dummy data
-    _data7Days = _HistoryDataBundle(
-      periodText: 'Statistik 7 Hari',
-      caloriesAvg: 1850,
-      proteinAvg: 78,
-      carbsAvg: 210,
-      fatAvg: 52,
-      sugarAvg: 24,
-      consistentDays: 24,
-      achievementPercentage: 92,
-      targetCalories: 2000,
-      chartBars: [
-        _ChartBarData(label: '26', actual: 1600, target: 2000),
-        _ChartBarData(label: '27', actual: 1400, target: 2000),
-        _ChartBarData(label: '28', actual: 1950, target: 2000),
-        _ChartBarData(label: '29', actual: 1500, target: 2000),
-        _ChartBarData(label: '30', actual: 1900, target: 2000),
-        _ChartBarData(label: '31', actual: 1300, target: 2000),
-        _ChartBarData(label: '1 Jun', actual: 1800, target: 2000),
-      ],
-      proteinChartBars: [
-        _ChartBarData(label: '26', actual: 70, target: 90),
-        _ChartBarData(label: '27', actual: 65, target: 90),
-        _ChartBarData(label: '28', actual: 88, target: 90),
-        _ChartBarData(label: '29', actual: 60, target: 90),
-        _ChartBarData(label: '30', actual: 85, target: 90),
-        _ChartBarData(label: '31', actual: 55, target: 90),
-        _ChartBarData(label: '1 Jun', actual: 75, target: 90),
-      ],
-      carbsChartBars: [
-        _ChartBarData(label: '26', actual: 200, target: 250),
-        _ChartBarData(label: '27', actual: 180, target: 250),
-        _ChartBarData(label: '28', actual: 240, target: 250),
-        _ChartBarData(label: '29', actual: 190, target: 250),
-        _ChartBarData(label: '30', actual: 230, target: 250),
-        _ChartBarData(label: '31', actual: 150, target: 250),
-        _ChartBarData(label: '1 Jun', actual: 210, target: 250),
-      ],
-      fatChartBars: [
-        _ChartBarData(label: '26', actual: 60, target: 70),
-        _ChartBarData(label: '27', actual: 45, target: 70),
-        _ChartBarData(label: '28', actual: 68, target: 70),
-        _ChartBarData(label: '29', actual: 50, target: 70),
-        _ChartBarData(label: '30', actual: 65, target: 70),
-        _ChartBarData(label: '31', actual: 40, target: 70),
-        _ChartBarData(label: '1 Jun', actual: 50, target: 70),
-      ],
-      dailyList: [
-        _DailyHistoryItem(
-          date: '1 Juni 2026',
-          calories: 1800,
-          status: _GoalStatus.tercapai,
-          protein: 75,
-          carbs: 210,
-          fat: 50,
-          sugar: 22,
-        ),
-        _DailyHistoryItem(
-          date: '31 Mei 2026',
-          calories: 1650,
-          status: _GoalStatus.diBawah,
-          protein: 68,
-          carbs: 185,
-          fat: 42,
-          sugar: 18,
-        ),
-        _DailyHistoryItem(
-          date: '30 Mei 2026',
-          calories: 2100,
-          status: _GoalStatus.tercapai, // 2100 is within margin of 2000
-          protein: 85,
-          carbs: 230,
-          fat: 58,
-          sugar: 26,
-        ),
-        _DailyHistoryItem(
-          date: '29 Mei 2026',
-          calories: 2450,
-          status: _GoalStatus.terlampaui,
-          protein: 98,
-          carbs: 280,
-          fat: 72,
-          sugar: 35,
-        ),
-      ],
-    );
+  Future<void> _fetchHistoryData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _profileErrorMessage = null;
+    });
 
-    // 30 Days dummy data
-    _data30Days = _HistoryDataBundle(
-      periodText: 'Statistik 30 Hari',
-      caloriesAvg: 1910,
-      proteinAvg: 82,
-      carbsAvg: 225,
-      fatAvg: 55,
-      sugarAvg: 26,
-      consistentDays: 26,
-      achievementPercentage: 87,
-      targetCalories: 2000,
-      chartBars: [
-        _ChartBarData(label: 'W1', actual: 1880, target: 2000),
-        _ChartBarData(label: 'W2', actual: 1950, target: 2000),
-        _ChartBarData(label: 'W3', actual: 1720, target: 2000),
-        _ChartBarData(label: 'W4', actual: 2090, target: 2000),
-      ],
-      proteinChartBars: [
-        _ChartBarData(label: 'W1', actual: 80, target: 90),
-        _ChartBarData(label: 'W2', actual: 84, target: 90),
-        _ChartBarData(label: 'W3', actual: 72, target: 90),
-        _ChartBarData(label: 'W4', actual: 92, target: 90),
-      ],
-      carbsChartBars: [
-        _ChartBarData(label: 'W1', actual: 210, target: 250),
-        _ChartBarData(label: 'W2', actual: 230, target: 250),
-        _ChartBarData(label: 'W3', actual: 190, target: 250),
-        _ChartBarData(label: 'W4', actual: 260, target: 250),
-      ],
-      fatChartBars: [
-        _ChartBarData(label: 'W1', actual: 52, target: 70),
-        _ChartBarData(label: 'W2', actual: 58, target: 70),
-        _ChartBarData(label: 'W3', actual: 48, target: 70),
-        _ChartBarData(label: 'W4', actual: 62, target: 70),
-      ],
-      dailyList: [
-        _DailyHistoryItem(
-          date: '28 Mei 2026',
-          calories: 1920,
-          status: _GoalStatus.tercapai,
-          protein: 80,
-          carbs: 220,
-          fat: 55,
-          sugar: 23,
-        ),
-        _DailyHistoryItem(
-          date: '27 Mei 2026',
-          calories: 1510,
-          status: _GoalStatus.diBawah,
-          protein: 60,
-          carbs: 170,
-          fat: 40,
-          sugar: 15,
-        ),
-        _DailyHistoryItem(
-          date: '26 Mei 2026',
-          calories: 2300,
-          status: _GoalStatus.terlampaui,
-          protein: 94,
-          carbs: 260,
-          fat: 65,
-          sugar: 30,
-        ),
-      ],
-    );
+    final repo = DashboardRepository();
+    final profileRepo = ProfileRepository();
 
-    // Monthly dummy data
-    _dataMonthly = _HistoryDataBundle(
-      periodText: 'Statistik Bulanan',
-      caloriesAvg: 1950,
-      proteinAvg: 85,
-      carbsAvg: 235,
-      fatAvg: 58,
-      sugarAvg: 27,
-      consistentDays: 28,
-      achievementPercentage: 90,
-      targetCalories: 2000,
-      chartBars: [
-        _ChartBarData(label: 'Mar', actual: 1820, target: 2000),
-        _ChartBarData(label: 'Apr', actual: 1980, target: 2000),
-        _ChartBarData(label: 'Mei', actual: 2050, target: 2000),
+    List<Map<String, dynamic>>? raw7;
+    List<Map<String, dynamic>>? raw90;
+    UserProfile? profile;
+
+    // Fetch 7 days history
+    try {
+      raw7 = await repo.fetchDashboardHistory(days: 7);
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', '');
+    }
+
+    // Fetch 90 days history
+    try {
+      raw90 = await repo.fetchDashboardHistory(days: 90);
+    } catch (e) {
+      _errorMessage ??= e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', '');
+    }
+
+    // Fetch user profile
+    try {
+      profile = await profileRepo.getProfile();
+    } catch (e) {
+      _profileErrorMessage = e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', '');
+    }
+
+    setState(() {
+      _userProfile = profile;
+      _isLoading = false;
+
+      if (raw7 != null && raw90 != null) {
+        _raw90Data = raw90;
+        _data7Days = _parseHistoryData(raw7, 'Statistik 7 Hari', profile);
+        
+        // Filter the raw90 list for the last 30 days of data
+        final now = DateTime.now();
+        final limitDate30 = now.subtract(const Duration(days: 30));
+        final raw30 = raw90.where((item) {
+          final parsed = DateTime.tryParse(item['log_date'] as String);
+          return parsed == null || parsed.isAfter(limitDate30);
+        }).toList();
+        
+        _data30Days = _parseHistoryData(raw30, 'Statistik 30 Hari', profile);
+        _dataMonthly = _parseHistoryData(raw90, 'Statistik Bulanan', profile, filterMonth: _selectedMonth);
+      }
+    });
+  }
+
+  void _changeMonth(int offset) {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + offset);
+      if (_raw90Data != null) {
+        _dataMonthly = _parseHistoryData(_raw90Data!, 'Statistik Bulanan', _userProfile, filterMonth: _selectedMonth);
+      }
+    });
+  }
+
+  _HistoryDataBundle _parseHistoryData(
+    List<Map<String, dynamic>> rawList,
+    String periodText,
+    UserProfile? profile, {
+    DateTime? filterMonth,
+  }) {
+    // If filterMonth is set, filter by year and month
+    final filteredList = rawList.where((item) {
+      if (filterMonth == null) return true;
+      final parsedDate = DateTime.tryParse(item['log_date'] as String);
+      if (parsedDate == null) return false;
+      return parsedDate.year == filterMonth.year && parsedDate.month == filterMonth.month;
+    }).toList();
+
+    double totalCal = 0;
+    double totalProtein = 0;
+    double totalCarbs = 0;
+    double totalFat = 0;
+    double totalSugar = 0;
+
+    final targetCalories = profile != null && profile.caloriesKcal > 0 ? profile.caloriesKcal.toDouble() : 2000.0;
+    final targetProtein = profile != null && profile.proteinG > 0 ? profile.proteinG.toDouble() : 60.0;
+    final targetCarbs = profile != null && profile.carbohydrateG > 0 ? profile.carbohydrateG.toDouble() : 300.0;
+    final targetFat = profile != null && profile.fatG > 0 ? profile.fatG.toDouble() : 65.0;
+
+    List<_ChartBarData> calBars = [];
+    List<_ChartBarData> proteinBars = [];
+    List<_ChartBarData> carbsBars = [];
+    List<_ChartBarData> fatBars = [];
+    List<_DailyHistoryItem> dailyList = [];
+
+    // Sort by log_date ascending
+    final sortedList = List<Map<String, dynamic>>.from(filteredList);
+    sortedList.sort((a, b) => (a['log_date'] as String).compareTo(b['log_date'] as String));
+
+    for (var item in sortedList) {
+      final dateStr = item['log_date'] as String;
+      final double cal = (item['total_calories'] as num?)?.toDouble() ?? 0.0;
+      final double prot = (item['total_protein'] as num?)?.toDouble() ?? 0.0;
+      final double carbs = (item['total_carbohydrate'] as num?)?.toDouble() ?? 0.0;
+      final double fat = (item['total_fat'] as num?)?.toDouble() ?? 0.0;
+      final double sugar = (item['total_sugar'] as num?)?.toDouble() ?? 0.0;
+
+      final parsedDate = DateTime.tryParse(dateStr);
+      final label = parsedDate != null ? '${parsedDate.day}' : dateStr;
+
+      calBars.add(_ChartBarData(label: label, actual: cal, target: targetCalories));
+      proteinBars.add(_ChartBarData(label: label, actual: prot, target: targetProtein));
+      carbsBars.add(_ChartBarData(label: label, actual: carbs, target: targetCarbs));
+      fatBars.add(_ChartBarData(label: label, actual: fat, target: targetFat));
+
+      totalCal += cal;
+      totalProtein += prot;
+      totalCarbs += carbs;
+      totalFat += fat;
+      totalSugar += sugar;
+
+      dailyList.add(_DailyHistoryItem(
+        date: _formatHistoryDate(parsedDate ?? DateTime.now()),
+        calories: cal.toInt(),
+        status: cal >= targetCalories ? _GoalStatus.tercapai : _GoalStatus.diBawah,
+        protein: prot.toInt(),
+        carbs: carbs.toInt(),
+        fat: fat.toInt(),
+        sugar: sugar.toInt(),
+      ));
+    }
+
+    final hasData = sortedList.isNotEmpty;
+    final count = hasData ? sortedList.length : 1;
+
+    final caloriesAvg = hasData ? (totalCal / count).round() : null;
+    final proteinAvg = hasData ? (totalProtein / count).round() : null;
+    final carbsAvg = hasData ? (totalCarbs / count).round() : null;
+    final fatAvg = hasData ? (totalFat / count).round() : null;
+    final sugarAvg = hasData ? (totalSugar / count).round() : null;
+
+    final achievementPercentage = hasData && caloriesAvg != null
+        ? (caloriesAvg / targetCalories * 100).round()
+        : 0;
+
+    return _HistoryDataBundle(
+      periodText: periodText,
+      caloriesAvg: caloriesAvg,
+      proteinAvg: proteinAvg,
+      carbsAvg: carbsAvg,
+      fatAvg: fatAvg,
+      sugarAvg: sugarAvg,
+      consistentDays: sortedList.length,
+      achievementPercentage: achievementPercentage,
+      targetCalories: targetCalories.toInt(),
+      chartBars: calBars.isNotEmpty ? calBars : [
+        _ChartBarData(label: '-', actual: 0, target: targetCalories)
       ],
-      proteinChartBars: [
-        _ChartBarData(label: 'Mar', actual: 78, target: 90),
-        _ChartBarData(label: 'Apr', actual: 86, target: 90),
-        _ChartBarData(label: 'Mei', actual: 91, target: 90),
+      proteinChartBars: proteinBars.isNotEmpty ? proteinBars : [
+        _ChartBarData(label: '-', actual: 0, target: targetProtein)
       ],
-      carbsChartBars: [
-        _ChartBarData(label: 'Mar', actual: 215, target: 250),
-        _ChartBarData(label: 'Apr', actual: 240, target: 250),
-        _ChartBarData(label: 'Mei', actual: 255, target: 250),
+      carbsChartBars: carbsBars.isNotEmpty ? carbsBars : [
+        _ChartBarData(label: '-', actual: 0, target: targetCarbs)
       ],
-      fatChartBars: [
-        _ChartBarData(label: 'Mar', actual: 50, target: 70),
-        _ChartBarData(label: 'Apr', actual: 60, target: 70),
-        _ChartBarData(label: 'Mei', actual: 63, target: 70),
+      fatChartBars: fatBars.isNotEmpty ? fatBars : [
+        _ChartBarData(label: '-', actual: 0, target: targetFat)
       ],
-      dailyList: [
-        _DailyHistoryItem(
-          date: '25 Mei 2026',
-          calories: 2020,
-          status: _GoalStatus.tercapai,
-          protein: 85,
-          carbs: 235,
-          fat: 58,
-          sugar: 24,
-        ),
-        _DailyHistoryItem(
-          date: '24 Mei 2026',
-          calories: 1450,
-          status: _GoalStatus.diBawah,
-          protein: 58,
-          carbs: 165,
-          fat: 38,
-          sugar: 12,
-        ),
-        _DailyHistoryItem(
-          date: '23 Mei 2026',
-          calories: 2500,
-          status: _GoalStatus.terlampaui,
-          protein: 102,
-          carbs: 290,
-          fat: 75,
-          sugar: 38,
-        ),
-      ],
+      dailyList: dailyList,
     );
+  }
+
+  String _formatHistoryDate(DateTime date) {
+    return DateFormat('d MMMM yyyy', 'id').format(date);
   }
 
   _HistoryDataBundle _getActiveBundle() {
@@ -278,8 +249,157 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
     const Color textMuted = Color(0xFF64748B);
     const Color borderGray = Color(0xFFE2E8F0);
 
-    final activeBundle = _getActiveBundle();
-    final chartBars = _getActiveChartBars(activeBundle);
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+          ),
+        ),
+      );
+    }
+
+    // Kasus C: Keduanya gagal
+    if (_errorMessage != null && _userProfile == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Gagal memuat data.\n$_errorMessage\n${_profileErrorMessage ?? ""}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textDark, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _fetchHistoryData,
+                  style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+                  child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget bodyContent;
+
+    // Kasus B: Profile berhasil, History gagal
+    if (_errorMessage != null && _userProfile != null) {
+      bodyContent = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'Gagal memuat data riwayat.\n$_errorMessage',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: textDark, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _fetchHistoryData,
+                style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
+                child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (_userProfile != null && !_userProfile!.hasNutritionTarget) {
+      bodyContent = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.playlist_add_check_circle_outlined,
+                color: Color(0xFF14B8A6),
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Target nutrisi belum diatur',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Silakan lengkapi profil Anda di menu Profil untuk mengaktifkan target nutrisi harian.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      final activeBundle = _getActiveBundle();
+      final chartBars = _getActiveChartBars(activeBundle);
+
+      bodyContent = SingleChildScrollView(
+        key: ValueKey<int>(_selectedPeriod),
+        physics: const BouncingScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Kasus A: History berhasil, Profile gagal (Show error banner inside card/section)
+              if (_profileErrorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Gagal memuat target dari profil: $_profileErrorMessage. Menggunakan target default.',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF92400E)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              _buildSummaryCard(activeBundle),
+              const SizedBox(height: 24),
+              _buildChartSection(activeBundle, chartBars),
+              const SizedBox(height: 24),
+              _buildDailyHistorySection(activeBundle),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -287,7 +407,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Header (Title, Period, Notification bell)
+            // 1. Header (Title, Period navigation, Notification bell)
             Padding(
               padding: const EdgeInsets.only(
                 left: 20.0,
@@ -298,10 +418,10 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Riwayat',
                         style: TextStyle(
                           fontSize: 26,
@@ -309,14 +429,32 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                           color: primaryGreen,
                         ),
                       ),
-                      Text(
-                        'JUNI 2026',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: textMuted,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                        ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_selectedPeriod == 2)
+                            GestureDetector(
+                              onTap: () => _changeMonth(-1),
+                              child: const Icon(Icons.chevron_left, size: 18, color: textMuted),
+                            ),
+                          Text(
+                            _selectedPeriod == 2
+                                ? DateFormat('MMMM yyyy', 'id').format(_selectedMonth).toUpperCase()
+                                : DateFormat('MMMM yyyy', 'id').format(DateTime.now()).toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: textMuted,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          if (_selectedPeriod == 2)
+                            GestureDetector(
+                              onTap: () => _changeMonth(1),
+                              child: const Icon(Icons.chevron_right, size: 18, color: textMuted),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -371,29 +509,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                 transitionBuilder: (Widget child, Animation<double> animation) {
                   return FadeTransition(opacity: animation, child: child);
                 },
-                child: SingleChildScrollView(
-                  key: ValueKey<int>(_selectedPeriod),
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Card Ringkasan Nutrisi
-                        _buildSummaryCard(activeBundle),
-                        const SizedBox(height: 24),
-
-                        // Section Grafik Nutrisi
-                        _buildChartSection(activeBundle, chartBars),
-                        const SizedBox(height: 24),
-
-                        // Section Riwayat Harian
-                        _buildDailyHistorySection(activeBundle),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
-                  ),
-                ),
+                child: bodyContent,
               ),
             ),
           ],
@@ -413,6 +529,10 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
         onTap: () {
           setState(() {
             _selectedPeriod = index;
+            // Force re-calculation of monthly if switched back to bulanan
+            if (index == 2 && _raw90Data != null) {
+              _dataMonthly = _parseHistoryData(_raw90Data!, 'Statistik Bulanan', _userProfile, filterMonth: _selectedMonth);
+            }
           });
         },
         child: AnimatedContainer(
@@ -424,7 +544,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
+                      color: Colors.black.withOpacity(0.05),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     )
@@ -461,7 +581,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
         border: Border.all(color: borderGray, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -471,7 +591,6 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row Header: Title & statistics duration badge
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -510,8 +629,8 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   icon: Icons.local_fire_department_outlined,
                   iconColor: const Color(0xFFF59E0B),
                   label: 'Kalori Rata-rata',
-                  value: '${bundle.caloriesAvg}',
-                  unit: ' kcal',
+                  value: bundle.caloriesAvg != null ? '${bundle.caloriesAvg}' : '-',
+                  unit: bundle.caloriesAvg != null ? ' kcal' : '',
                 ),
               ),
               Expanded(
@@ -519,8 +638,8 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   icon: Icons.fitness_center_outlined,
                   iconColor: primaryGreen,
                   label: 'Protein Rata-rata',
-                  value: '${bundle.proteinAvg}',
-                  unit: ' g',
+                  value: bundle.proteinAvg != null ? '${bundle.proteinAvg}' : '-',
+                  unit: bundle.proteinAvg != null ? ' g' : '',
                 ),
               ),
             ],
@@ -533,8 +652,8 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   icon: Icons.rice_bowl_outlined,
                   iconColor: const Color(0xFFF97316),
                   label: 'Karbohidrat Rata-rata',
-                  value: '${bundle.carbsAvg}',
-                  unit: ' g',
+                  value: bundle.carbsAvg != null ? '${bundle.carbsAvg}' : '-',
+                  unit: bundle.carbsAvg != null ? ' g' : '',
                 ),
               ),
               Expanded(
@@ -542,8 +661,8 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   icon: Icons.opacity_outlined,
                   iconColor: const Color(0xFF0284C7),
                   label: 'Lemak Rata-rata',
-                  value: '${bundle.fatAvg}',
-                  unit: ' g',
+                  value: bundle.fatAvg != null ? '${bundle.fatAvg}' : '-',
+                  unit: bundle.fatAvg != null ? ' g' : '',
                 ),
               ),
             ],
@@ -556,8 +675,8 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   icon: Icons.cookie_outlined,
                   iconColor: const Color(0xFFDC2626),
                   label: 'Gula Rata-rata',
-                  value: '${bundle.sugarAvg}',
-                  unit: ' g',
+                  value: bundle.sugarAvg != null ? '${bundle.sugarAvg}' : '-',
+                  unit: bundle.sugarAvg != null ? ' g' : '',
                 ),
               ),
               Expanded(
@@ -603,7 +722,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: bundle.achievementPercentage / 100,
+              value: (bundle.achievementPercentage / 100).clamp(0.0, 1.0),
               backgroundColor: const Color(0xFFE2E8F0),
               color: accentTeal,
               minHeight: 8,
@@ -613,12 +732,12 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Target: ${bundle.targetCalories} kcal',
-                style: const TextStyle(fontSize: 11, color: textMuted, fontWeight: FontWeight.w500),
+              const Text(
+                'Asupan Kalori vs Target',
+                style: TextStyle(fontSize: 11, color: textMuted, fontWeight: FontWeight.w500),
               ),
               Text(
-                'Rata-rata: ${bundle.caloriesAvg} kcal',
+                '${bundle.caloriesAvg ?? "-"} / ${bundle.targetCalories} kcal',
                 style: const TextStyle(fontSize: 11, color: textDark, fontWeight: FontWeight.bold),
               ),
             ],
@@ -773,7 +892,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Aktual: ${chartBars.last.actual}',
+                        'Aktual: ${chartBars.isNotEmpty ? chartBars.last.actual : 0}',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -781,14 +900,13 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   const SizedBox(width: 16),
                   Row(
                     children: [
-                      // Simulated dashed line dot
                       const Text(
                         '---',
                         style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Target: ${chartBars.last.target}',
+                        'Target: ${chartBars.isNotEmpty ? chartBars.last.target : 0}',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -807,12 +925,11 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: chartBars.map((bar) {
-                      // Heights calculation (max 130px representation for graph bars)
                       const double maxBarHeight = 130.0;
-                      
-                      // Normalize heights against target height representation
                       final double targetHeight = maxBarHeight;
-                      final double actualHeight = (bar.actual / bar.target * maxBarHeight).clamp(10.0, maxBarHeight * 1.2);
+                      final double actualHeight = bar.target > 0 
+                          ? (bar.actual / bar.target * maxBarHeight).clamp(10.0, maxBarHeight * 1.2) 
+                          : 10.0;
 
                       return Column(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -826,11 +943,10 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                                   width: 22,
                                   height: targetHeight,
                                   decoration: BoxDecoration(
-                                    color: accentTeal.withValues(alpha: 0.15),
+                                    color: accentTeal.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(11),
                                   ),
                                 ),
-                                // Dotted horizontal target line simulation (placed at target boundary level)
                                 Positioned(
                                   top: maxBarHeight - targetHeight,
                                   child: Container(
@@ -840,7 +956,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                                       border: Border(
                                         bottom: BorderSide(
                                           color: Colors.grey.shade300,
-                                          style: BorderStyle.solid, // solid boundary line
+                                          style: BorderStyle.solid,
                                         ),
                                       ),
                                     ),
@@ -863,10 +979,10 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                           const SizedBox(height: 8),
                           Text(
                             bar.label,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 11,
-                              fontWeight: bar.label == '1 Jun' ? FontWeight.bold : FontWeight.normal,
-                              color: bar.label == '1 Jun' ? primaryGreen : const Color(0xFF64748B),
+                              fontWeight: FontWeight.normal,
+                              color: Color(0xFF64748B),
                             ),
                           ),
                         ],
@@ -920,6 +1036,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
   // Daily History List Section Builder
   Widget _buildDailyHistorySection(_HistoryDataBundle bundle) {
     const Color textDark = Color(0xFF1E293B);
+    const Color textMuted = Color(0xFF64748B);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -934,15 +1051,29 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
         ),
         const SizedBox(height: 12),
 
-        // List of history item cards
-        Column(
-          children: bundle.dailyList.map((item) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: _buildDailyHistoryCard(item),
-            );
-          }).toList(),
-        ),
+        if (bundle.dailyList.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 32.0),
+              child: Text(
+                'Tidak ada riwayat konsumsi pada periode ini.',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: textMuted,
+                ),
+              ),
+            ),
+          )
+        else
+          Column(
+            children: bundle.dailyList.map((item) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: _buildDailyHistoryCard(item),
+              );
+            }).toList(),
+          ),
       ],
     );
   }
@@ -974,7 +1105,6 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
         break;
     }
 
-    // Extraction day number for round visual
     final dayNum = item.date.split(' ').first;
 
     return Container(
@@ -987,7 +1117,6 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
       padding: const EdgeInsets.all(14.0),
       child: Row(
         children: [
-          // Circular Date representation
           Container(
             width: 48,
             height: 48,
@@ -1007,7 +1136,6 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
           ),
           const SizedBox(width: 14),
 
-          // Detail info columns
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1046,11 +1174,9 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
             ),
           ),
 
-          // Right side Actions: Badge & Button
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Badge status
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -1080,7 +1206,6 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                 ),
               ),
               const SizedBox(height: 8),
-              // Button Lihat Detail
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -1101,7 +1226,7 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
                   'Lihat Detail',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF14B8A6), // Accent Teal
+                    color: Color(0xFF14B8A6),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1114,14 +1239,13 @@ class _RiwayatTabState extends State<RiwayatTab> with SingleTickerProviderStateM
   }
 }
 
-// Data representation classes
 class _HistoryDataBundle {
   final String periodText;
-  final int caloriesAvg;
-  final int proteinAvg;
-  final int carbsAvg;
-  final int fatAvg;
-  final int sugarAvg;
+  final int? caloriesAvg;
+  final int? proteinAvg;
+  final int? carbsAvg;
+  final int? fatAvg;
+  final int? sugarAvg;
   final int consistentDays;
   final int achievementPercentage;
   final int targetCalories;

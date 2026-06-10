@@ -1,13 +1,96 @@
 import 'package:flutter/material.dart';
 import '../models/meal_plan.dart';
+import '../repositories/meal_plan_repository.dart';
+import '../utils/app_snackbar.dart';
 
-class PilihPaketMealPlanScreen extends StatelessWidget {
+class PilihPaketMealPlanScreen extends StatefulWidget {
   final MealFocus focus;
 
   const PilihPaketMealPlanScreen({
     super.key,
     required this.focus,
   });
+
+  @override
+  State<PilihPaketMealPlanScreen> createState() => _PilihPaketMealPlanScreenState();
+}
+
+class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
+  bool _isActivating = false;
+
+  Future<void> _activatePackage(MealPackage package) async {
+    setState(() {
+      _isActivating = true;
+    });
+
+    // Show custom modal progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            content: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF095D40)),
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    'Mengaktifkan Paket...',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Mendaftarkan rancangan menu makan harian ke server.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      final repo = MealPlanRepository();
+      await repo.activateMealPlan(package);
+
+      if (mounted) {
+        Navigator.pop(context); // pop loading dialog
+        AppSnackbar.showSuccess(context, 'Meal Plan "${package.name}" diaktifkan!');
+        Navigator.pop(context, package); // return chosen package to HomeScreen
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // pop loading dialog
+        setState(() {
+          _isActivating = false;
+        });
+        AppSnackbar.showError(
+          context,
+          'Gagal mengaktifkan Meal Plan.',
+          subtitle: e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''),
+        );
+      }
+    }
+  }
 
   void _showActivationDialog(BuildContext context, MealPackage package) {
     showGeneralDialog(
@@ -91,8 +174,8 @@ class PilihPaketMealPlanScreen extends StatelessWidget {
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context); // pop dialog
-                  Navigator.pop(context, package); // return chosen package
+                  Navigator.pop(context); // pop confirmation dialog
+                  _activatePackage(package);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF095D40),
@@ -149,7 +232,7 @@ class PilihPaketMealPlanScreen extends StatelessWidget {
     const Color borderGray = Color(0xFFE2E8F0);
 
     // Filter packages matching the focus id
-    final filteredPackages = dummyMealPackages.where((p) => p.focusId == focus.id).toList();
+    final filteredPackages = dummyMealPackages.where((p) => p.focusId == widget.focus.id).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -220,7 +303,6 @@ class PilihPaketMealPlanScreen extends StatelessWidget {
     Color textDark,
     Color textMuted,
   ) {
-    // If it is popular or recommended, we give it a more highlighted visual border
     final bool highlighted = package.isPopular || package.isRecommended;
 
     return Container(
@@ -369,7 +451,7 @@ class PilihPaketMealPlanScreen extends StatelessWidget {
               width: double.infinity,
               height: 44,
               child: ElevatedButton(
-                onPressed: () => _showActivationDialog(context, package),
+                onPressed: _isActivating ? null : () => _showActivationDialog(context, package),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: highlighted ? primaryGreen : Colors.white,
                   foregroundColor: highlighted ? Colors.white : primaryGreen,

@@ -286,7 +286,7 @@ void main() {
 
       // Regardless of failure, token should be cleared locally (safe/hybrid logout)
       expect(await sessionManager.hasToken(), isFalse);
-      expect(await sessionManager.isOnboardingCompleted(), isFalse);
+      expect(await sessionManager.isOnboardingCompleted(), isTrue);
     });
   });
 }

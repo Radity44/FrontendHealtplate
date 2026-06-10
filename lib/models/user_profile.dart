@@ -29,6 +29,27 @@ class UserProfile {
     required this.sugarG,
   });
 
+  double get bmi {
+    if (heightCm <= 0) return 0.0;
+    final heightMeters = heightCm / 100.0;
+    return weightKg / (heightMeters * heightMeters);
+  }
+
+  String get bmiStatus {
+    final value = bmi;
+    if (value <= 0) return '-';
+    if (value < 18.5) return 'Kurus';
+    if (value < 25.0) return 'Normal';
+    if (value < 30.0) return 'Overweight';
+    return 'Obesitas';
+  }
+
+  bool get hasNutritionTarget =>
+      caloriesKcal > 0 &&
+      proteinG > 0 &&
+      carbohydrateG > 0 &&
+      fatG > 0;
+
   // Convert UserProfile to a JSON Map
   Map<String, dynamic> toJson() {
     return {

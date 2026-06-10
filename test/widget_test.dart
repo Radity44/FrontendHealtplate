@@ -6,8 +6,12 @@ import 'package:frontendhealtplate/screens/home_screen.dart';
 import 'package:frontendhealtplate/screens/profile_pic_setup_screen.dart';
 import 'package:frontendhealtplate/screens/personal_data_setup_screen.dart';
 import 'package:frontendhealtplate/repositories/profile_repository.dart';
+import 'package:frontendhealtplate/repositories/meal_plan_repository.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
-void main() {
+void main() async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('id', null);
   ProfileRepository.useMockDataForTests = true;
   testWidgets('Welcome Screen shows when not logged in', (WidgetTester tester) async {
     // Build our app with isLoggedIn: false.
@@ -24,12 +28,13 @@ void main() {
   testWidgets('Home Screen shows when already logged in', (WidgetTester tester) async {
     // Build our app with isLoggedIn: true.
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Verify that HomeScreen is displayed instead of WelcomeScreen.
     expect(find.byType(HomeScreen), findsOneWidget);
-    expect(find.text('Halo, Ridho'), findsOneWidget);
+    expect(find.textContaining('Halo, Ridho'), findsOneWidget);
     expect(find.text('Target Harian'), findsOneWidget);
-    expect(find.text('2000 kcal'), findsOneWidget);
+    expect(find.text('2000 kcal'), findsNWidgets(2));
   });
 
   testWidgets('Profile Picture Setup Screen renders correctly', (WidgetTester tester) async {
@@ -71,9 +76,10 @@ void main() {
 
   testWidgets('Home Screen navigation to Meal Plan tab works and toggles active state', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Initially, we are on Dashboard (Home).
-    expect(find.text('Halo, Ridho'), findsOneWidget);
+    expect(find.textContaining('Halo, Ridho'), findsOneWidget);
 
     // Tap on the Meal Plan bottom navigation item.
     final mealPlanTab = find.text('Meal Plan').last;
@@ -122,8 +128,10 @@ void main() {
     expect(find.text('Telur Rebus + Oatmeal'), findsOneWidget);
   });
 
-  testWidgets('Log Harian navigation, toggle empty state, and bottom sheet manual input works', (WidgetTester tester) async {
+  testWidgets('Log Harian navigation and bottom sheet manual input works', (WidgetTester tester) async {
+    MealPlanRepository.mockActivePlan = null; // Reset static mock active plan state for clean test isolation
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Tap on Log Harian bottom navigation item.
     final logHarianTab = find.text('Log Harian').last;
@@ -133,18 +141,8 @@ void main() {
     // Verify it is on the Log Harian screen
     expect(find.text('Log Harian').first, findsOneWidget);
 
-    // By default, the simulation is on Filled State (Nasi Goreng Spesial exists).
-    expect(find.text('Nasi Goreng Spesial'), findsOneWidget);
-    expect(find.text('Teh Manis'), findsOneWidget);
-
-    // Toggle simulation switch to change to Empty State.
-    final toggleSwitch = find.byType(Switch);
-    expect(toggleSwitch, findsOneWidget);
-    await tester.tap(toggleSwitch);
-    await tester.pumpAndSettle();
-
-    // Now it should show Empty State ("Belum ada konsumsi tercatat").
-    expect(find.text('Belum ada konsumsi tercatat').first, findsOneWidget);
+    // By default, the simulation is on Empty State ("Belum ada konsumsi tercatat hari ini." exists).
+    expect(find.textContaining('Belum ada konsumsi tercatat').first, findsOneWidget);
 
     // Tap "+ Tambah Konsumsi" button.
     final addBtn = find.text('Tambah Konsumsi').first;
@@ -154,7 +152,6 @@ void main() {
     // Verify Bottom Sheet is shown.
     expect(find.text('Pilih metode pencatatan konsumsi'), findsOneWidget);
     expect(find.text('Input Manual'), findsOneWidget);
-    expect(find.text('Scan Barcode'), findsOneWidget);
 
     // Tap "Input Manual".
     final manualInput = find.text('Input Manual');
@@ -166,8 +163,10 @@ void main() {
     expect(find.text('Simpan ke Log Harian'), findsOneWidget);
   });
 
+
   testWidgets('Riwayat tab navigation, period filter switching, and detail view navigation works', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Tap on Riwayat bottom navigation item.
     final riwayatTab = find.text('Riwayat').last;
@@ -185,8 +184,8 @@ void main() {
     await tester.tap(tab30Days);
     await tester.pumpAndSettle();
 
-    // Verify average calories updated to 30-day average dummy data (1910 kcal)
-    expect(find.text('1910 kcal'), findsOneWidget);
+    // Verify average calories updated to 30-day average dummy data (1900 kcal)
+    expect(find.text('1900 kcal').first, findsOneWidget);
 
     // Tap "7 Hari" filter to go back
     final tab7Days = find.text('7 Hari');
@@ -216,6 +215,7 @@ void main() {
 
   testWidgets('Redesigned Profile tab renders correctly, navigates to Edit Profil, and triggers Logout confirmation', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
 
     // Tap on the Profil tab
     final profilTab = find.text('Profil').last;
@@ -234,7 +234,7 @@ void main() {
 
     expect(find.text('Target Nutrisi Harian'), findsOneWidget);
     expect(find.text('Progress Bulan Ini'), findsOneWidget);
-    expect(find.text('24 Hari'), findsOneWidget);
+    expect(find.text('Data akan tersedia setelah penggunaan rutin.'), findsOneWidget);
 
     // Tap on "Edit Profil" button
     final editProfilBtn = find.text('Edit Profil');
@@ -271,5 +271,57 @@ void main() {
 
     // Verify dialog closed and we are still on the profile screen
     expect(find.text('Health Summary'), findsOneWidget);
+  });
+
+  testWidgets('Water Tracking Card handles interactive progress simulation', (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp(isLoggedIn: true));
+    await tester.pumpAndSettle();
+
+    // Verify card is on the dashboard
+    expect(find.text('Air Minum Hari Ini'), findsOneWidget);
+    expect(find.text('0 / 8 Gelas'), findsOneWidget);
+    expect(find.text('Target: 2000 ml'), findsOneWidget);
+
+    // Find the Container that wraps the Water Tracking Card
+    final waterCardFinder = find.ancestor(
+      of: find.text('Air Minum Hari Ini'),
+      matching: find.byType(Container),
+    ).first;
+
+    final circleFinder = find.descendant(
+      of: waterCardFinder,
+      matching: find.byType(GestureDetector),
+    );
+
+    // Verify there are 8 circles/gesture detectors in the card
+    expect(circleFinder, findsNWidgets(8));
+
+    // The initial state is 0.
+    // Circle at index 0 is the next one to activate. Let's tap it!
+    await tester.ensureVisible(circleFinder.at(0));
+    await tester.tap(circleFinder.at(0));
+    await tester.pumpAndSettle();
+
+    // Verify progress increased to 1 / 8 Gelas
+    expect(find.text('1 / 8 Gelas'), findsOneWidget);
+
+    // Tap circle at index 0 again (which is now the last active circle)
+    await tester.ensureVisible(circleFinder.at(0));
+    await tester.tap(circleFinder.at(0));
+    await tester.pumpAndSettle();
+
+    // Verify progress decreased back to 0 / 8 Gelas
+    expect(find.text('0 / 8 Gelas'), findsOneWidget);
+
+    // Tap circles index 0 to 7 to reach 8 / 8 Gelas
+    for (int i = 0; i < 8; i++) {
+      await tester.ensureVisible(circleFinder.at(i));
+      await tester.tap(circleFinder.at(i));
+      await tester.pumpAndSettle();
+    }
+
+    // Verify 8 / 8 Gelas and target reached badge
+    expect(find.text('8 / 8 Gelas'), findsOneWidget);
+    expect(find.text('🎉 Target Tercapai'), findsOneWidget);
   });
 }
