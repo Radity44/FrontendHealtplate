@@ -5,13 +5,27 @@ import '../models/meal_plan.dart';
 import '../models/meal_plan_day.dart';
 import '../models/meal_plan_meal.dart';
 import '../repositories/log_repository.dart';
-import '../repositories/meal_plan_repository.dart';
 import 'tambah_konsumsi_manual_screen.dart';
+
+import '../repositories/profile_repository.dart';
 
 class LogHarianTab extends StatefulWidget {
   final VoidCallback? onRefreshDashboard;
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDateChanged;
+  final DailyLog? dailyLog;
+  final MealPlan? activeMealPlan;
+  final bool isLoading;
 
-  const LogHarianTab({super.key, this.onRefreshDashboard});
+  const LogHarianTab({
+    super.key,
+    this.onRefreshDashboard,
+    required this.selectedDate,
+    required this.onDateChanged,
+    this.dailyLog,
+    this.activeMealPlan,
+    this.isLoading = false,
+  });
 
   @override
   State<LogHarianTab> createState() => _LogHarianTabState();
@@ -26,15 +40,37 @@ class _LogHarianTabState extends State<LogHarianTab> {
   // Repository
   final LogRepository _logRepository = LogRepository();
 
-  DailyLog? _dailyLog;
-  MealPlan? _activeMealPlan;
+  DailyLog? get _dailyLog => widget.dailyLog;
+  MealPlan? get _activeMealPlan => widget.activeMealPlan;
   bool _isLoading = true;
   String? _errorMessage;
+
+  DateTime get _todayDate {
+    final now = DateTime.now();
+    if (ProfileRepository.useMockDataForTests) {
+      return DateTime(2026, 6, 10);
+    }
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isToday(DateTime date) {
+    final today = _todayDate;
+    return date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day;
+  }
+
+  bool _isPast(DateTime date) {
+    final today = _todayDate;
+    final compareDate = DateTime(date.year, date.month, date.day);
+    return compareDate.isBefore(today);
+  }
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    _selectedDate = widget.selectedDate;
+    final now = ProfileRepository.useMockDataForTests ? DateTime(2026, 6, 10) : DateTime.now();
     _baseMonday = DateTime(
       now.year,
       now.month,
@@ -42,7 +78,22 @@ class _LogHarianTabState extends State<LogHarianTab> {
     ).subtract(Duration(days: now.weekday - 1));
     _calendarPageController = PageController(initialPage: 500);
     _currentCalendarPage = 500;
-    _fetchDailyLog();
+    _isLoading = widget.isLoading;
+  }
+
+  @override
+  void didUpdateWidget(covariant LogHarianTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDate != widget.selectedDate) {
+      setState(() {
+        _selectedDate = widget.selectedDate;
+      });
+    }
+    if (oldWidget.isLoading != widget.isLoading) {
+      setState(() {
+        _isLoading = widget.isLoading;
+      });
+    }
   }
 
   @override
@@ -58,32 +109,8 @@ class _LogHarianTabState extends State<LogHarianTab> {
     return '$year-$month-$day';
   }
 
-  Future<void> _fetchDailyLog() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final dateStr = _formatDateString(_selectedDate);
-      final log = await _logRepository.fetchDailyLog(dateStr);
-      final activePlan = await MealPlanRepository().getActiveMealPlan();
-      if (mounted) {
-        setState(() {
-          _dailyLog = log;
-          _activeMealPlan = activePlan;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
-          _isLoading = false;
-        });
-      }
-    }
+  Future<void> _refreshData() async {
+    widget.onRefreshDashboard?.call();
   }
 
   Future<void> _logRecommendation(String mealTime, List<MealPlanMeal> meals) async {
@@ -153,8 +180,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        _fetchDailyLog();
-        widget.onRefreshDashboard?.call();
+        _refreshData();
       }
     } catch (e) {
       if (mounted) {
@@ -177,9 +203,11 @@ class _LogHarianTabState extends State<LogHarianTab> {
     try {
       final dateStr = _formatDateString(_selectedDate);
       await _logRepository.deleteFoodEntry(date: dateStr, entryId: entry.entryId);
-      _fetchDailyLog();
-      widget.onRefreshDashboard?.call();
+      await _refreshData();
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Konsumsi berhasil dihapus.'),
@@ -286,15 +314,16 @@ class _LogHarianTabState extends State<LogHarianTab> {
 
       if (mounted) {
         Navigator.pop(context); // Close loading overlay
-        _fetchDailyLog();
-        widget.onRefreshDashboard?.call();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Konsumsi berhasil diubah.'),
-            backgroundColor: primaryGreen,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        await _refreshData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Konsumsi berhasil diubah.'),
+              backgroundColor: primaryGreen,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -481,8 +510,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                         ),
                       );
                       if (result == true) {
-                        _fetchDailyLog();
-                        widget.onRefreshDashboard?.call();
+                        _refreshData();
                       }
                     },
                   ),
@@ -672,11 +700,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: weekDates.map((date) {
-                              final now = DateTime.now();
-                              final isToday =
-                                  date.day == now.day &&
-                                  date.month == now.month &&
-                                  date.year == now.year;
+                              final isToday = _isToday(date);
                               final isSelected =
                                   date.day == _selectedDate.day &&
                                   date.month == _selectedDate.month &&
@@ -714,10 +738,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
 
                               return GestureDetector(
                                 onTap: () {
-                                  setState(() {
-                                    _selectedDate = date;
-                                  });
-                                  _fetchDailyLog();
+                                  widget.onDateChanged(date);
                                 },
                                 child: Container(
                                   width: 36,
@@ -746,6 +767,39 @@ class _LogHarianTabState extends State<LogHarianTab> {
 
             const SizedBox(height: 10),
 
+            if (!_isToday(_selectedDate))
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3), width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Color(0xFFD97706), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _isPast(_selectedDate)
+                              ? 'Data pada tanggal lampau hanya dapat dilihat dan tidak dapat diubah.'
+                              : 'Data pada tanggal masa depan hanya dapat dilihat dan tidak dapat diubah.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFFB45309),
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // 3. Main content
             Expanded(
               child: _isLoading
@@ -770,7 +824,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                                 ),
                                 const SizedBox(height: 16),
                                 ElevatedButton(
-                                  onPressed: _fetchDailyLog,
+                                  onPressed: _refreshData,
                                   style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
                                   child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
                                 ),
@@ -779,7 +833,7 @@ class _LogHarianTabState extends State<LogHarianTab> {
                           ),
                         )
                       : RefreshIndicator(
-                          onRefresh: _fetchDailyLog,
+                          onRefresh: _refreshData,
                           color: primaryGreen,
                           child: SingleChildScrollView(
                             physics: const AlwaysScrollableScrollPhysics(),
@@ -1039,7 +1093,9 @@ class _LogHarianTabState extends State<LogHarianTab> {
                   if (recMeals != null && recMeals.isNotEmpty) ...[
                     const SizedBox(width: 12),
                     ElevatedButton(
-                      onPressed: () => _logRecommendation(mealType, recMeals!),
+                      onPressed: !_isToday(_selectedDate)
+                          ? null
+                          : () => _logRecommendation(mealType, recMeals!),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF2563EB),
                         foregroundColor: Colors.white,
@@ -1091,23 +1147,25 @@ class _LogHarianTabState extends State<LogHarianTab> {
                       color: textMuted,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () => _showTambahKonsumsiSheet(title),
-                    icon: const Icon(Icons.add, size: 16, color: Colors.white),
-                    label: const Text(
-                      'Tambah Konsumsi',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryGreen,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                  if (_isToday(_selectedDate)) ...[
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () => _showTambahKonsumsiSheet(title),
+                      icon: const Icon(Icons.add, size: 16, color: Colors.white),
+                      label: const Text(
+                        'Tambah Konsumsi',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryGreen,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             )
@@ -1160,10 +1218,11 @@ class _LogHarianTabState extends State<LogHarianTab> {
                             ],
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.more_vert, color: textMuted),
-                          onPressed: () => _showEntryActions(item),
-                        ),
+                        if (_isToday(_selectedDate))
+                          IconButton(
+                            icon: const Icon(Icons.more_vert, color: textMuted),
+                            onPressed: () => _showEntryActions(item),
+                          ),
                       ],
                     ),
                   ),
@@ -1207,27 +1266,29 @@ class _LogHarianTabState extends State<LogHarianTab> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            Center(
-              child: SizedBox(
-                width: double.infinity,
-                height: 42,
-                child: OutlinedButton.icon(
-                  onPressed: () => _showTambahKonsumsiSheet(title),
-                  icon: const Icon(Icons.add, size: 16, color: primaryGreen),
-                  label: const Text(
-                    'Tambah Lagi',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: primaryGreen),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: primaryGreen, width: 1.2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+            if (_isToday(_selectedDate)) ...[
+              const SizedBox(height: 14),
+              Center(
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 42,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showTambahKonsumsiSheet(title),
+                    icon: const Icon(Icons.add, size: 16, color: primaryGreen),
+                    label: const Text(
+                      'Tambah Lagi',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: primaryGreen),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: primaryGreen, width: 1.2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
           ]
         ],
       ),

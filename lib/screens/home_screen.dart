@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'log_harian_tab.dart';
 import '../repositories/meal_plan_repository.dart';
 import '../models/meal_plan_day.dart';
+import '../models/meal_plan_meal.dart';
 import 'riwayat_tab.dart';
 import 'profil_tab.dart';
 import '../models/meal_plan.dart';
 import '../models/user_profile.dart';
 import '../models/dashboard_summary.dart';
 import '../models/log_entry.dart';
+import '../models/daily_log.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/dashboard_repository.dart';
 import '../repositories/log_repository.dart';
@@ -26,7 +28,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const Color primaryGreen = Color(0xFF095D40);
   static const Color accentTeal = Color(0xFF14B8A6);
   static const Color textDark = Color(0xFF1E293B);
@@ -35,10 +37,21 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentTab = 0;
   bool _hasActiveMealPlan = false;
   DateTime _selectedDate = DateTime.now();
-  final Set<String> _consumedMeals = {};
 
   final MealPlanRepository _mealPlanRepository = MealPlanRepository();
   MealPlan? _activeMealPlan;
+
+  bool get _isMealPlanActiveOnSelectedDate {
+    if (!_hasActiveMealPlan || _activeMealPlan == null) return false;
+    final start = DateTime(
+      _activeMealPlan!.activationDate.year,
+      _activeMealPlan!.activationDate.month,
+      _activeMealPlan!.activationDate.day,
+    );
+    final end = start.add(Duration(days: _activeMealPlan!.durationDays - 1));
+    final sel = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    return !sel.isBefore(start) && !sel.isAfter(end);
+  }
 
   // Meal Plan Flow state
   // FUTURE INTEGRATION ARCHITECTURE NOTE:
@@ -53,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final DateTime _baseMonday;
   int _currentCalendarPage = 500;
 
-  // Water tracking dummy state lokal.
+  // Water tracking state.
   int _waterIntake = 0;
 
   // Profile data state loaded from backend
@@ -62,15 +75,18 @@ class _HomeScreenState extends State<HomeScreen> {
   final LogRepository _logRepository = LogRepository();
   UserProfile? _userProfile;
   DashboardSummary? _dashboardSummary;
+  DailyLog? _todayLog;
   bool _isProfileLoading = true;
   String? _profileError;
 
-  // Dynamic getters from DashboardSummary
-  int get _consumedCalories => _dashboardSummary?.consumedCalories.toInt() ?? 0;
-  int get _consumedProtein => _dashboardSummary?.consumedProtein.toInt() ?? 0;
-  int get _consumedCarbs => _dashboardSummary?.consumedCarbohydrate.toInt() ?? 0;
-  int get _consumedFat => _dashboardSummary?.consumedFat.toInt() ?? 0;
-  int get _consumedSugar => _dashboardSummary?.consumedSugar.toInt() ?? 0;
+
+
+  // Dynamic getters from DailyLog (for consumption) and UserProfile/DashboardSummary (for targets)
+  int get _consumedCalories => _todayLog?.totalCalories.toInt() ?? 0;
+  int get _consumedProtein => _todayLog?.totalProtein.toInt() ?? 0;
+  int get _consumedCarbs => _todayLog?.totalCarbohydrate.toInt() ?? 0;
+  int get _consumedFat => _todayLog?.totalFat.toInt() ?? 0;
+  int get _consumedSugar => _todayLog?.totalSugar.toInt() ?? 0;
 
   String get _profileName => _userProfile?.name ?? 'Pengguna';
   int get _targetCalories => _userProfile?.caloriesKcal ?? 0;
@@ -79,10 +95,24 @@ class _HomeScreenState extends State<HomeScreen> {
   int get _targetFat => _userProfile?.fatG ?? 0;
   int get _targetSugar => _userProfile?.sugarG ?? 0;
 
+  String _getMealImage(String mealName) {
+    final lower = mealName.toLowerCase();
+    if (lower.contains('dada ayam') || lower.contains('ayam') || lower.contains('chicken') || lower.contains('indomie')) {
+      return 'assets/images/food_lunch.png';
+    } else if (lower.contains('pisang') || lower.contains('teh') || lower.contains('chitato') || lower.contains('nutella') || lower.contains('snack') || lower.contains('yogurt')) {
+      return 'assets/images/food_snack.png';
+    } else if (lower.contains('telur') || lower.contains('roti') || lower.contains('oatmeal') || lower.contains('breakfast')) {
+      return 'assets/images/food_breakfast.png';
+    }
+    return 'assets/images/image_splash_screen.png';
+  }
+
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    WidgetsBinding.instance.addObserver(this);
+    final now = ProfileRepository.useMockDataForTests ? DateTime(2026, 6, 10) : DateTime.now();
+    _selectedDate = now;
     _baseMonday = DateTime(
       now.year,
       now.month,
@@ -91,6 +121,48 @@ class _HomeScreenState extends State<HomeScreen> {
     _calendarPageController = PageController(initialPage: 500);
     _currentCalendarPage = 500;
     _fetchDashboardData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _calendarPageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchDashboardData();
+    }
+  }
+
+  DateTime get _todayDate {
+    final now = DateTime.now();
+    if (ProfileRepository.useMockDataForTests) {
+      return DateTime(2026, 6, 10);
+    }
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  bool _isToday(DateTime date) {
+    final today = _todayDate;
+    return date.year == today.year &&
+        date.month == today.month &&
+        date.day == today.day;
+  }
+
+  bool _isPast(DateTime date) {
+    final today = _todayDate;
+    final compareDate = DateTime(date.year, date.month, date.day);
+    return compareDate.isBefore(today);
+  }
+
+  String _formatDateString(DateTime date) {
+    final year = date.year;
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 
   Future<void> _fetchDashboardData() async {
@@ -103,19 +175,45 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      debugPrint('STEP 1');
       final profileFuture = _profileRepository.getCurrentProfile();
       final summaryFuture = _dashboardRepository.fetchDashboardSummary();
       final activePlanFuture = _mealPlanRepository.getActiveMealPlan();
-      final results = await Future.wait([profileFuture, summaryFuture, activePlanFuture]);
+      final todayLogFuture = _logRepository.fetchDailyLog(_formatDateString(_selectedDate));
+      
+      final results = await Future.wait([
+        profileFuture,
+        summaryFuture,
+        activePlanFuture,
+        todayLogFuture,
+      ]);
+      debugPrint('STEP 2');
+
+      final userProfile = results[0] as UserProfile;
+      debugPrint('STEP 3');
+      
+      final summary = results[1] as DashboardSummary;
+      debugPrint('STEP 4');
+      
+      final activePlan = results[2] as MealPlan?;
+      debugPrint('STEP 5');
+      
+      final dailyLog = results[3] as DailyLog?;
+      debugPrint('STEP 6');
+
+      debugPrint('SUMMARY: ${summary.toJson()}');
+      debugPrint('TODAY LOG: ${dailyLog?.toJson()}');
+      debugPrint('ACTIVE PLAN: ${activePlan?.toJson()}');
 
       if (mounted) {
         setState(() {
-          _userProfile = results[0] as UserProfile;
-          _dashboardSummary = results[1] as DashboardSummary;
-          _waterIntake = ((_dashboardSummary?.consumedWaterMl ?? 0.0) / 250.0).round().clamp(0, 8);
-          
-          final activePlan = results[2] as MealPlan?;
+          _userProfile = userProfile;
+          _dashboardSummary = summary;
           _activeMealPlan = activePlan;
+          _todayLog = dailyLog;
+          
+          _waterIntake = ((_todayLog?.totalWaterMl ?? 0.0) / 250.0).round().clamp(0, 8);
+          
           if (activePlan != null) {
             _hasActiveMealPlan = true;
             _activePackage = dummyMealPackages.firstWhere(
@@ -129,8 +227,11 @@ class _HomeScreenState extends State<HomeScreen> {
           
           _isProfileLoading = false;
         });
+        debugPrint('STEP 7');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('DASHBOARD ERROR: $e');
+      debugPrint(stackTrace.toString());
       if (mounted) {
         setState(() {
           _profileError = e.toString();
@@ -147,20 +248,21 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final now = DateTime.now();
-      final year = now.year;
-      final month = now.month.toString().padLeft(2, '0');
-      final day = now.day.toString().padLeft(2, '0');
-      final dateStr = '$year-$month-$day';
+      final dateStr = _formatDateString(_selectedDate);
 
       await _logRepository.updateWaterIntake(
         date: dateStr,
         totalWaterMl: newVal * 250.0,
       );
+      
       final summary = await _dashboardRepository.fetchDashboardSummary();
+      final todayLog = await _logRepository.fetchDailyLog(dateStr);
+      
       if (mounted) {
         setState(() {
           _dashboardSummary = summary;
+          _todayLog = todayLog;
+          _waterIntake = ((_todayLog?.totalWaterMl ?? 0.0) / 250.0).round().clamp(0, 8);
         });
       }
     } catch (e) {
@@ -169,6 +271,105 @@ class _HomeScreenState extends State<HomeScreen> {
           _waterIntake = previousWater;
         });
         _showInfoSnackbar('Gagal memperbarui air minum: $e');
+      }
+    }
+  }
+
+  Future<void> _toggleMealConsumption(
+    String mealTime,
+    List<MealPlanMeal> meals,
+    bool isCurrentlyConsumed,
+  ) async {
+    if (!_isToday(_selectedDate)) {
+      if (_isPast(_selectedDate)) {
+        _showInfoSnackbar('Data pada tanggal lampau hanya dapat dilihat dan tidak dapat diubah.');
+      } else {
+        _showInfoSnackbar('Data pada tanggal masa depan hanya dapat dilihat dan tidak dapat diubah.');
+      }
+      return;
+    }
+
+    if (meals.isEmpty) {
+      _showInfoSnackbar('Tidak ada menu rekomendasi untuk dicatat.');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            content: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    isCurrentlyConsumed ? 'Menghapus Konsumsi...' : 'Mencatat Konsumsi...',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isCurrentlyConsumed
+                        ? 'Sedang menghapus hidangan dari log harian Anda.'
+                        : 'Menambahkan hidangan rekomendasi ke log harian Anda.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      final dateStr = _formatDateString(_selectedDate);
+      if (isCurrentlyConsumed) {
+        final entries = _getEntriesForMeal(mealTime);
+        for (var entry in entries) {
+          await _logRepository.deleteFoodEntry(date: dateStr, entryId: entry.entryId);
+        }
+        if (mounted) {
+          Navigator.pop(context); // pop loading dialog
+          _showInfoSnackbar('Konsumsi berhasil dihapus.');
+        }
+      } else {
+        for (var meal in meals) {
+          await _logRepository.addFoodEntry(
+            date: dateStr,
+            productId: meal.id,
+            mealTime: mealTime,
+            portion: meal.portion,
+          );
+        }
+        if (mounted) {
+          Navigator.pop(context); // pop loading dialog
+          _showInfoSnackbar('Konsumsi berhasil dicatat!');
+        }
+      }
+      await _fetchDashboardData();
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // pop loading dialog
+        _showInfoSnackbar('Gagal memperbarui konsumsi: $e');
       }
     }
   }
@@ -182,11 +383,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
-  @override
-  void dispose() {
-    _calendarPageController.dispose();
-    super.dispose();
-  }
+
 
   // Sign out method
   Future<void> _logout() async {
@@ -206,7 +403,19 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1:
         return _buildMealPlanTab();
       case 2:
-        return LogHarianTab(onRefreshDashboard: _fetchDashboardData);
+        return LogHarianTab(
+          selectedDate: _selectedDate,
+          onDateChanged: (date) {
+            setState(() {
+              _selectedDate = date;
+            });
+            _fetchDashboardData();
+          },
+          onRefreshDashboard: _fetchDashboardData,
+          dailyLog: _todayLog,
+          activeMealPlan: _activeMealPlan,
+          isLoading: _isProfileLoading,
+        );
       case 3:
         return const RiwayatTab();
       case 4:
@@ -560,7 +769,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     MaterialPageRoute(
                       builder: (context) => TambahKonsumsiManualScreen(
                         initialMealTime: 'Sarapan',
-                        selectedDate: DateTime.now(),
+                        selectedDate: _selectedDate,
                       ),
                     ),
                   );
@@ -568,6 +777,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _fetchDashboardData();
                   }
                 },
+                enabled: _isToday(_selectedDate),
               ),
             ),
             const SizedBox(width: 16),
@@ -1091,7 +1301,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Aktifkan Meal Plan di tab Meal Plan untuk melihat rekomendasi menu sehat berikutnya.',
+              'Pilih paket meal plan untuk mendapatkan rekomendasi menu harian yang sesuai dengan target nutrisi Anda.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -1181,6 +1391,36 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    String? backendImageUrl;
+    if (!ProfileRepository.useMockDataForTests && activePlan != null) {
+      final hour = DateTime.now().hour;
+      final todayNum = DateTime.now().weekday;
+      final todayData = activePlan.days.firstWhere(
+        (d) => d.dayNumber == todayNum,
+        orElse: () => MealPlanDay(
+          dayNumber: todayNum,
+          breakfast: [],
+          lunch: [],
+          dinner: [],
+          snack: [],
+          totalCalories: 0,
+        ),
+      );
+      List<MealPlanMeal>? meals;
+      if (hour < 9) {
+        meals = todayData.breakfast;
+      } else if (hour < 14) {
+        meals = todayData.lunch;
+      } else if (hour < 20) {
+        meals = todayData.dinner;
+      } else {
+        meals = todayData.snack;
+      }
+      if (meals.isNotEmpty && meals.first.imageUrl != null && meals.first.imageUrl!.isNotEmpty) {
+        backendImageUrl = meals.first.imageUrl;
+      }
+    }
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1205,13 +1445,29 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 160,
               width: double.infinity,
               color: const Color(0xFFF0FDFB),
-              child: Center(
-                child: Image.asset(
-                  'assets/images/image_splash_screen.png',
-                  height: 130,
-                  fit: BoxFit.contain,
-                ),
-              ),
+              child: backendImageUrl != null && backendImageUrl.isNotEmpty
+                  ? Image.network(
+                      backendImageUrl,
+                      height: 160,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Center(
+                          child: Image.asset(
+                            _getMealImage(nextMealName),
+                            height: 130,
+                            fit: BoxFit.contain,
+                          ),
+                        );
+                      },
+                    )
+                  : Center(
+                      child: Image.asset(
+                        _getMealImage(nextMealName),
+                        height: 130,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
             ),
           ),
           Padding(
@@ -1287,8 +1543,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<LogEntry> _getEntriesForMeal(String backendMealTime) {
-    if (_dashboardSummary == null) return [];
-    return _dashboardSummary!.entries.where(
+    if (_todayLog == null) return [];
+    return _todayLog!.logEntries.where(
       (entry) => entry.mealTime.toLowerCase() == backendMealTime.toLowerCase(),
     ).toList();
   }
@@ -1369,8 +1625,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDailyLogs() {
-    final hasConsumption = _dashboardSummary != null && _dashboardSummary!.entries.isNotEmpty;
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -1385,36 +1639,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: hasConsumption
-          ? Column(
-              children: [
-                _buildLogItem('Sarapan', 'Breakfast'),
-                const SizedBox(height: 12),
-                _buildLogItem('Makan Siang', 'Lunch'),
-                const SizedBox(height: 12),
-                _buildLogItem('Makan Malam', 'Dinner'),
-              ],
-            )
-          : Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
-                child: Column(
-                  children: [
-                    Icon(Icons.restaurant_outlined, color: textMuted.withOpacity(0.5), size: 40),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Belum ada konsumsi yang dicatat hari ini.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: textMuted,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      child: Column(
+        children: [
+          _buildLogItem('Sarapan', 'Breakfast'),
+          const SizedBox(height: 12),
+          _buildLogItem('Makan Siang', 'Lunch'),
+          const SizedBox(height: 12),
+          _buildLogItem('Makan Malam', 'Dinner'),
+        ],
+      ),
     );
   }
 
@@ -1665,13 +1898,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: List.generate(totalGlasses, (index) {
                   final bool isActive = index < _waterIntake;
                   return GestureDetector(
-                    onTap: () {
-                      if (index == _waterIntake) {
-                        _updateWaterIntake((_waterIntake + 1).clamp(0, totalGlasses));
-                      } else if (index == _waterIntake - 1) {
-                        _updateWaterIntake((_waterIntake - 1).clamp(0, totalGlasses));
-                      }
-                    },
+                    onTap: !_isToday(_selectedDate)
+                        ? null
+                        : () {
+                            if (index == _waterIntake) {
+                              _updateWaterIntake((_waterIntake + 1).clamp(0, totalGlasses));
+                            } else if (index == _waterIntake - 1) {
+                              _updateWaterIntake((_waterIntake - 1).clamp(0, totalGlasses));
+                            }
+                          },
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -1785,37 +2020,41 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required String title,
     required VoidCallback onTap,
+    bool enabled = true,
   }) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0FDFB), // Very light mint/teal
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
+      onTap: enabled ? onTap : null,
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.5,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDFB), // Very light mint/teal
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: const Color(0xFF095D40), size: 20),
               ),
-              child: Icon(icon, color: const Color(0xFF095D40), size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2042,11 +2281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: weekDates.map((date) {
-                              final now = DateTime.now();
-                              final isToday =
-                                  date.day == now.day &&
-                                  date.month == now.month &&
-                                  date.year == now.year;
+                              final isToday = _isToday(date);
                               final isSelected =
                                   date.day == _selectedDate.day &&
                                   date.month == _selectedDate.month &&
@@ -2097,6 +2332,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   setState(() {
                                     _selectedDate = date;
                                   });
+                                  _fetchDashboardData();
                                 },
                                 child: Container(
                                   width: 36,
@@ -2145,7 +2381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 physics: const BouncingScrollPhysics(),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: _hasActiveMealPlan
+                  child: _isMealPlanActiveOnSelectedDate
                       ? _buildActiveMealPlanState()
                       : _buildEmptyMealPlanState(),
                 ),
@@ -2181,7 +2417,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 24),
         const Text(
-          'Belum Ada Meal Plan Aktif',
+          'Belum ada Meal Plan aktif',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,
@@ -2191,7 +2427,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'Pilih paket meal plan yang sesuai dengan kebutuhan nutrisi Anda untuk mulai mendapatkan rekomendasi menu harian.',
+          'Pilih paket meal plan untuk mendapatkan rekomendasi menu harian yang sesuai dengan target nutrisi Anda.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13, color: textMuted, height: 1.5),
         ),
@@ -2200,23 +2436,20 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PilihFokusNutrisiScreen(),
-                ),
-              );
-              if (result != null && result is MealPackage) {
-                setState(() {
-                  _activePackage = result;
-                  _selectedFocus = result.focusId;
-                  _hasActiveMealPlan = true;
-                  _consumedMeals.clear(); // Clear consumed status for new package
-                });
-                _showInfoSnackbar('Meal Plan "${result.name}" diaktifkan!');
-              }
-            },
+            onPressed: _isPast(_selectedDate)
+                ? null
+                : () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PilihFokusNutrisiScreen(),
+                      ),
+                    );
+                    if (result != null && result is MealPackage) {
+                      await _fetchDashboardData();
+                      _showInfoSnackbar('Meal Plan berhasil digunakan.');
+                    }
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryGreen,
               foregroundColor: Colors.white,
@@ -2343,6 +2576,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ? dayData.snack.fold(0, (s, m) => s + m.calories)
         : activePackage.snackCal;
 
+    final List<MealPlanMeal> bfMeals = dayData?.breakfast ?? [];
+    final List<MealPlanMeal> lnMeals = dayData?.lunch ?? [];
+    final List<MealPlanMeal> dnMeals = dayData?.dinner ?? [];
+    final List<MealPlanMeal> snMeals = dayData?.snack ?? [];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2386,59 +2624,138 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () async {
-                      // Show loading dialog
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (context) => const PopScope(
-                          canPop: false,
-                          child: AlertDialog(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(24))),
-                            content: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16.0),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(primaryGreen)),
-                                  SizedBox(height: 20),
-                                  Text('Menonaktifkan Paket...', style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (!_isPast(_selectedDate))
+                    GestureDetector(
+                      onTap: () async {
+                        // 1. Show confirmation dialog
+                        final confirm = await showGeneralDialog<bool>(
+                          context: context,
+                          barrierDismissible: true,
+                          barrierLabel: 'Hentikan',
+                          transitionDuration: const Duration(milliseconds: 250),
+                          pageBuilder: (context, anim1, anim2) => const SizedBox.shrink(),
+                          transitionBuilder: (context, anim1, anim2, child) {
+                            final curve = CurvedAnimation(parent: anim1, curve: Curves.easeOutBack);
+                            return ScaleTransition(
+                              scale: curve,
+                              child: AlertDialog(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                                title: Row(
+                                  children: [
+                                    const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Hentikan Meal Plan ini?',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                content: const Text(
+                                  'Apakah Anda yakin ingin menghentikan Meal Plan aktif saat ini?',
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text(
+                                      'Batal',
+                                      style: TextStyle(
+                                        color: Color(0xFF64748B),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.redAccent,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: const Text('Hentikan'),
+                                  ),
                                 ],
+                              ),
+                            );
+                          },
+                        );
+
+                        if (confirm != true) return;
+
+                        // 2. Show loading dialog
+                        if (!mounted) return;
+                        showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (context) => const PopScope(
+                            canPop: false,
+                            child: AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(24))),
+                              content: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(primaryGreen)),
+                                    SizedBox(height: 20),
+                                    Text(
+                                      'Mengganti Meal Plan...',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Sedang menyiapkan menu harian baru Anda.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      );
+                        );
 
-                      try {
-                        await _mealPlanRepository.deactivateActiveMealPlans();
-                        if (mounted) {
-                          Navigator.pop(context); // Dismiss loading dialog
-                          setState(() {
-                            _hasActiveMealPlan = false;
-                            _activePackage = null;
-                            _selectedFocus = null;
-                            _activeMealPlan = null;
-                          });
-                          _showInfoSnackbar('Meal Plan dinonaktifkan.');
+                        try {
+                          await _mealPlanRepository.deactivateActiveMealPlans();
+                          if (mounted) {
+                            Navigator.pop(context); // Dismiss loading dialog
+                            setState(() {
+                              _hasActiveMealPlan = false;
+                              _activePackage = null;
+                              _selectedFocus = null;
+                              _activeMealPlan = null;
+                            });
+                            _showInfoSnackbar('Meal Plan berhasil dihentikan.');
+                          }
+                        } catch (e) {
+                          debugPrint('Error deactivating meal plan: $e');
+                          if (mounted) {
+                            Navigator.pop(context); // Dismiss loading dialog
+                            _showInfoSnackbar('Gagal mengganti Meal Plan. Silakan coba lagi.');
+                          }
                         }
-                      } catch (e) {
-                        if (mounted) {
-                          Navigator.pop(context); // Dismiss loading dialog
-                          _showInfoSnackbar('Gagal menonaktifkan meal plan: $e');
-                        }
-                      }
-                    },
-                    child: const Text(
-                      'Ganti Paket',
-                      style: TextStyle(
-                        color: Color(0xFF14B8A6),
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
+                      },
+                      child: const Text(
+                        'Ganti Paket',
+                        style: TextStyle(
+                          color: Color(0xFF14B8A6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -2524,7 +2841,8 @@ class _HomeScreenState extends State<HomeScreen> {
           title: bfTitle,
           calories: '$bfCal kcal',
           assetPath: 'assets/images/food_breakfast.png',
-          mealKey: 'sarapan',
+          mealTime: 'Breakfast',
+          meals: bfMeals,
           recipeDetail:
               'Rincian menu sarapan lezat kaya nutrisi untuk mendukung target kesehatan harian Anda.',
         ),
@@ -2534,7 +2852,8 @@ class _HomeScreenState extends State<HomeScreen> {
           title: lnTitle,
           calories: '$lnCal kcal',
           assetPath: 'assets/images/food_lunch.png',
-          mealKey: 'makansiang',
+          mealTime: 'Lunch',
+          meals: lnMeals,
           recipeDetail:
               'Menu makan siang terkalibrasi untuk mencukupi kebutuhan gizi makro di siang hari.',
         ),
@@ -2544,7 +2863,8 @@ class _HomeScreenState extends State<HomeScreen> {
           title: dnTitle,
           calories: '$dnCal kcal',
           assetPath: 'assets/images/food_dinner.png',
-          mealKey: 'makanmalam',
+          mealTime: 'Dinner',
+          meals: dnMeals,
           recipeDetail:
               'Makan malam yang ringan dan sehat untuk menjaga metabolisme tubuh tetap ideal.',
         ),
@@ -2554,7 +2874,8 @@ class _HomeScreenState extends State<HomeScreen> {
           title: snTitle,
           calories: '$snCal kcal',
           assetPath: 'assets/images/food_snack.png',
-          mealKey: 'snack',
+          mealTime: 'Snack',
+          meals: snMeals,
           recipeDetail:
               'Camilan sehat terkalibrasi untuk memuaskan rasa lapar di antara waktu makan utama.',
         ),
@@ -2568,12 +2889,13 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title,
     required String calories,
     required String assetPath,
-    required String mealKey,
+    required String mealTime,
+    required List<MealPlanMeal> meals,
     required String recipeDetail,
   }) {
     const Color textDark = Color(0xFF1E293B);
     const Color textMuted = Color(0xFF64748B);
-    final bool isConsumed = _consumedMeals.contains(mealKey);
+    final bool isConsumed = _getEntriesForMeal(mealTime).isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -2633,15 +2955,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     children: [
                       GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (isConsumed) {
-                              _consumedMeals.remove(mealKey);
-                            } else {
-                              _consumedMeals.add(mealKey);
-                            }
-                          });
-                        },
+                        onTap: !_isToday(_selectedDate)
+                            ? () {
+                                if (_isPast(_selectedDate)) {
+                                  _showInfoSnackbar('Data pada tanggal lampau hanya dapat dilihat dan tidak dapat diubah.');
+                                } else {
+                                  _showInfoSnackbar('Data pada tanggal masa depan hanya dapat dilihat dan tidak dapat diubah.');
+                                }
+                              }
+                            : () => _toggleMealConsumption(mealTime, meals, isConsumed),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

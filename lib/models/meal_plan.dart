@@ -279,6 +279,7 @@ class MealPlan {
   final int durationDays;
   final bool isActive;
   final DateTime createdAt;
+  final DateTime? activatedAt;
   final List<MealPlanDay> days;
 
   MealPlan({
@@ -289,8 +290,11 @@ class MealPlan {
     required this.durationDays,
     required this.isActive,
     required this.createdAt,
+    this.activatedAt,
     this.days = const [],
   });
+
+  DateTime get activationDate => activatedAt ?? createdAt;
 
   factory MealPlan.fromJson(Map<String, dynamic> json, {List<dynamic>? items}) {
     final name = json['plan_name'] as String? ?? 'Meal Plan';
@@ -329,31 +333,42 @@ class MealPlan {
 
     // Map days from items list if provided
     List<MealPlanDay> mappedDays = [];
-    if (items != null) {
-      final daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-      for (int i = 0; i < 7; i++) {
-        final dayName = daysOfWeek[i];
-        final dayItems = items.where((item) => item['meal_day'] == dayName).toList();
-        
-        final bf = dayItems.where((item) => item['meal_time'] == 'Breakfast').map((item) => MealPlanMeal.fromJson(item)).toList();
-        final ln = dayItems.where((item) => item['meal_time'] == 'Lunch').map((item) => MealPlanMeal.fromJson(item)).toList();
-        final dn = dayItems.where((item) => item['meal_time'] == 'Dinner').map((item) => MealPlanMeal.fromJson(item)).toList();
-        final sn = dayItems.where((item) => item['meal_time'] == 'Snack').map((item) => MealPlanMeal.fromJson(item)).toList();
-        
-        final int totalCal = bf.fold<int>(0, (s, x) => s + x.calories) +
-                             ln.fold<int>(0, (s, x) => s + x.calories) +
-                             dn.fold<int>(0, (s, x) => s + x.calories) +
-                             sn.fold<int>(0, (s, x) => s + x.calories);
-                             
-        mappedDays.add(MealPlanDay(
-          dayNumber: i + 1,
-          breakfast: bf,
-          lunch: ln,
-          dinner: dn,
-          snack: sn,
-          totalCalories: totalCal,
-        ));
-      }
+    final safeItems = items ?? [];
+    final daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    for (int i = 0; i < 7; i++) {
+      final dayName = daysOfWeek[i];
+      final dayItems = safeItems.where((item) => item != null && item is Map && item['meal_day'] == dayName).toList();
+      
+      final bf = dayItems
+          .where((item) => item is Map && item['meal_time'] == 'Breakfast')
+          .map((item) => MealPlanMeal.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+      final ln = dayItems
+          .where((item) => item is Map && item['meal_time'] == 'Lunch')
+          .map((item) => MealPlanMeal.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+      final dn = dayItems
+          .where((item) => item is Map && item['meal_time'] == 'Dinner')
+          .map((item) => MealPlanMeal.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+      final sn = dayItems
+          .where((item) => item is Map && item['meal_time'] == 'Snack')
+          .map((item) => MealPlanMeal.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+      
+      final int totalCal = bf.fold<int>(0, (s, x) => s + x.calories) +
+                           ln.fold<int>(0, (s, x) => s + x.calories) +
+                           dn.fold<int>(0, (s, x) => s + x.calories) +
+                           sn.fold<int>(0, (s, x) => s + x.calories);
+                           
+      mappedDays.add(MealPlanDay(
+        dayNumber: i + 1,
+        breakfast: bf,
+        lunch: ln,
+        dinner: dn,
+        snack: sn,
+        totalCalories: totalCal,
+      ));
     }
 
     return MealPlan(
@@ -364,7 +379,22 @@ class MealPlan {
       durationDays: 7, // Default duration is 7 days
       isActive: status == 'Active',
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : DateTime.now(),
+      activatedAt: json['activated_at'] != null ? DateTime.parse(json['activated_at'] as String) : null,
       days: mappedDays,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'nutritionFocus': nutritionFocus,
+      'durationDays': durationDays,
+      'isActive': isActive,
+      'createdAt': createdAt.toIso8601String(),
+      'activated_at': activatedAt?.toIso8601String(),
+      'days': days.map((e) => e.toJson()).toList(),
+    };
   }
 }

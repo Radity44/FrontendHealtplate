@@ -87,7 +87,7 @@ void main() async {
     await tester.pumpAndSettle();
 
     // Verify empty state is displayed first.
-    expect(find.text('Belum Ada Meal Plan Aktif'), findsOneWidget);
+    expect(find.text('Belum ada Meal Plan aktif'), findsOneWidget);
 
     // Tap "Buat Meal Plan" to transition to Pilih Fokus Nutrisi screen.
     final makePlanBtn = find.text('Buat Meal Plan');
@@ -114,7 +114,7 @@ void main() async {
     await tester.pumpAndSettle();
 
     // Verify confirmation dialog shows.
-    expect(find.text('Aktifkan Meal Plan?'), findsOneWidget);
+    expect(find.text('Gunakan Meal Plan Ini?'), findsOneWidget);
     expect(find.text('Gunakan Paket'), findsOneWidget);
 
     // Tap "Gunakan Paket" in the dialog.

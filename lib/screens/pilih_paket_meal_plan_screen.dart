@@ -44,7 +44,7 @@ class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
                   ),
                   SizedBox(height: 20),
                   Text(
-                    'Mengaktifkan Paket...',
+                    'Menyiapkan Meal Plan...',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -53,7 +53,7 @@ class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Mendaftarkan rancangan menu makan harian ke server.',
+                    'Sedang menyiapkan menu harian Anda.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
@@ -74,10 +74,11 @@ class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
 
       if (mounted) {
         Navigator.pop(context); // pop loading dialog
-        AppSnackbar.showSuccess(context, 'Meal Plan "${package.name}" diaktifkan!');
+        AppSnackbar.showSuccess(context, 'Meal Plan berhasil digunakan.');
         Navigator.pop(context, package); // return chosen package to HomeScreen
       }
     } catch (e) {
+      debugPrint('Error activating meal plan: $e');
       if (mounted) {
         Navigator.pop(context); // pop loading dialog
         setState(() {
@@ -85,8 +86,8 @@ class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
         });
         AppSnackbar.showError(
           context,
-          'Gagal mengaktifkan Meal Plan.',
-          subtitle: e.toString().replaceAll('Exception: ', '').replaceAll('HttpException: ', ''),
+          'Meal Plan belum dapat digunakan.',
+          subtitle: 'Silakan coba lagi.',
         );
       }
     }
@@ -96,7 +97,7 @@ class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Aktifkan',
+      barrierLabel: 'Gunakan Paket',
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
         return const SizedBox.shrink();
@@ -107,13 +108,15 @@ class _PilihPaketMealPlanScreenState extends State<PilihPaketMealPlanScreen> {
           scale: curve,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.check_circle_outline, color: Color(0xFF095D40)),
-                SizedBox(width: 8),
-                Text(
-                  'Aktifkan Meal Plan?',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                const Icon(Icons.check_circle_outline, color: Color(0xFF095D40)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Gunakan Meal Plan Ini?',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                  ),
                 ),
               ],
             ),

@@ -40,7 +40,7 @@ class MealPlanMeal {
     final baseFat = (food['fat_g'] as num?)?.toDouble() ?? 0.0;
 
     return MealPlanMeal(
-      id: food['product_id'] as String? ?? '',
+      id: json['product_id'] as String? ?? food['product_id'] as String? ?? '',
       name: food['product_name'] as String? ?? '',
       calories: (baseCal * scale).round(),
       protein: (baseProt * scale).round(),
@@ -49,5 +49,18 @@ class MealPlanMeal {
       imageUrl: food['image_url'] as String?,
       portion: portion,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'calories': calories,
+      'protein': protein,
+      'carbohydrate': carbohydrate,
+      'fat': fat,
+      'imageUrl': imageUrl,
+      'portion': portion,
+    };
   }
 }

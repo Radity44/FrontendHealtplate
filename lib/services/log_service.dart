@@ -53,7 +53,7 @@ class LogService {
       throw HttpException('Gagal membaca data dari server (${response.statusCode}).');
     }
 
-    final message = body['message'] as String? ?? 'Terjadi kesalahan sistem.';
+    final message = body['message'] as String? ?? body['error'] as String? ?? 'Terjadi kesalahan sistem.';
 
     switch (response.statusCode) {
       case 400:

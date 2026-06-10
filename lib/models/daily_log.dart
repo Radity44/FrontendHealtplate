@@ -32,8 +32,22 @@ class DailyLog {
       totalSugar: (json['total_sugar'] as num?)?.toDouble() ?? 0.0,
       totalWaterMl: (json['total_water_ml'] as num?)?.toDouble() ?? 0.0,
       logEntries: entriesList
-          .map((item) => LogEntry.fromJson(item as Map<String, dynamic>))
+          .whereType<Map<String, dynamic>>()
+          .map((item) => LogEntry.fromJson(item))
           .toList(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'log_date': logDate,
+      'total_calories': totalCalories,
+      'total_protein': totalProtein,
+      'total_carbohydrate': totalCarbohydrate,
+      'total_fat': totalFat,
+      'total_sugar': totalSugar,
+      'total_water_ml': totalWaterMl,
+      'log_entries': logEntries.map((e) => e.toJson()).toList(),
+    };
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import '../models/meal_plan.dart';
 import '../models/meal_plan_day.dart';
 import '../models/meal_plan_meal.dart';
@@ -177,7 +178,7 @@ class MealPlanRepository {
         nutritionFocus: 'Kaya Protein',
         durationDays: 7,
         isActive: true,
-        createdAt: DateTime.now(),
+        createdAt: ProfileRepository.useMockDataForTests ? DateTime(2026, 6, 10) : DateTime.now(),
         days: mockDays,
       );
       return;
@@ -253,7 +254,7 @@ class MealPlanRepository {
         await _service.deleteMealPlan(newPlanId, token);
       } catch (rollbackError) {
         // Log rollback error but proceed to throw original error
-        print('Rollback failed for meal plan: $rollbackError');
+        debugPrint('Rollback failed for meal plan: $rollbackError');
       }
       rethrow;
     }

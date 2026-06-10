@@ -72,8 +72,39 @@ class DashboardSummary {
       percentageFat: (percentageMap['fat'] as num?)?.toDouble() ?? 0.0,
       percentageSugar: (percentageMap['sugar'] as num?)?.toDouble() ?? 0.0,
       entries: entriesList
-          .map((item) => LogEntry.fromJson(item as Map<String, dynamic>))
+          .whereType<Map<String, dynamic>>()
+          .map((item) => LogEntry.fromJson(item))
           .toList(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'date': date,
+      'consumed': {
+        'calories': consumedCalories,
+        'protein': consumedProtein,
+        'carbohydrate': consumedCarbohydrate,
+        'fat': consumedFat,
+        'sugar': consumedSugar,
+        'water_ml': consumedWaterMl,
+      },
+      'target': {
+        'calories': targetCalories,
+        'protein': targetProtein,
+        'carbohydrate': targetCarbohydrate,
+        'fat': targetFat,
+        'sugar': targetSugar,
+        'water_ml': targetWaterMl,
+      },
+      'percentage': {
+        'calories': percentageCalories,
+        'protein': percentageProtein,
+        'carbohydrate': percentageCarbohydrate,
+        'fat': percentageFat,
+        'sugar': percentageSugar,
+      },
+      'entries': entries.map((e) => e.toJson()).toList(),
+    };
   }
 }

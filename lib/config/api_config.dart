@@ -5,13 +5,13 @@ class ApiConfig {
   /// Override manual untuk testing menggunakan perangkat fisik (physical device).
   /// Masukkan IP LAN laptop/server Anda (contoh: 'http://192.168.1.10:3000/api/v1').
   /// Jika bernilai `null` atau kosong, aplikasi akan mendeteksi platform secara otomatis.
-  static const String? customBaseUrl =
+  static const String customBaseUrl =
       'https://healthplate-backend-production.up.railway.app/api/v1';
 
   /// Mengembalikan API Base URL yang sesuai berdasarkan platform atau override manual.
   static String get baseUrl {
-    if (customBaseUrl != null && customBaseUrl!.isNotEmpty) {
-      return customBaseUrl!;
+    if (customBaseUrl.isNotEmpty) {
+      return customBaseUrl;
     }
 
     if (kIsWeb) {

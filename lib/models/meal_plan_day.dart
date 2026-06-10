@@ -16,4 +16,15 @@ class MealPlanDay {
     required this.snack,
     required this.totalCalories,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'dayNumber': dayNumber,
+      'breakfast': breakfast.map((e) => e.toJson()).toList(),
+      'lunch': lunch.map((e) => e.toJson()).toList(),
+      'dinner': dinner.map((e) => e.toJson()).toList(),
+      'snack': snack.map((e) => e.toJson()).toList(),
+      'totalCalories': totalCalories,
+    };
+  }
 }

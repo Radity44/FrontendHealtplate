@@ -96,13 +96,15 @@ class _ProfilTabState extends State<ProfilTab> {
           scale: curve,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.logout, color: Colors.redAccent),
-                SizedBox(width: 8),
-                Text(
-                  'Keluar dari akun?',
-                  style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                const Icon(Icons.logout, color: Colors.redAccent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Keluar dari akun?',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                  ),
                 ),
               ],
             ),
@@ -1003,7 +1005,7 @@ class _ProfilTabState extends State<ProfilTab> {
             ),
           ] else ...[
             Text(
-              'Belum Ada Meal Plan Aktif',
+              'Belum ada Meal Plan aktif',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
@@ -1012,7 +1014,7 @@ class _ProfilTabState extends State<ProfilTab> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Silakan pilih paket meal plan di tab Meal Plan untuk menyinkronkan target menu harian Anda.',
+              'Pilih paket meal plan untuk mendapatkan rekomendasi menu harian yang sesuai dengan target nutrisi Anda.',
               style: TextStyle(
                 fontSize: 12,
                 color: textMuted,

@@ -23,7 +23,7 @@ class LogRepository {
         totalCarbohydrate: 0,
         totalFat: 0,
         totalSugar: 0,
-        totalWaterMl: 0,
+        totalWaterMl: DashboardRepository.mockWaterMl,
         logEntries: [],
       );
     }
@@ -32,7 +32,24 @@ class LogRepository {
     if (token == null || token.isEmpty) {
       throw Exception('Sesi telah kedaluwarsa. Silakan login kembali.');
     }
-    return _logService.fetchDailyLog(token, date);
+    try {
+      return await _logService.fetchDailyLog(token, date);
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('tidak ditemukan') || errStr.contains('404')) {
+        return DailyLog(
+          logDate: date,
+          totalCalories: 0,
+          totalProtein: 0,
+          totalCarbohydrate: 0,
+          totalFat: 0,
+          totalSugar: 0,
+          totalWaterMl: 0,
+          logEntries: [],
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<void> addFoodEntry({
